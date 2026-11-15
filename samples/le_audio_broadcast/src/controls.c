@@ -5,7 +5,8 @@
  */
 
 /* Mute button (R1 PTT, H1 mute), headset mode (R1) and, for the sink,
- * volume from the R1 knob or the H1 rotary encoder.
+ * volume from the R1 knob or the H1 rotary encoder and the LED strip effect
+ * from the H1 smart button.
  */
 
 #include <troposound/headset.h>
@@ -14,22 +15,23 @@
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 
 #include "broadcast.h"
 
 LOG_MODULE_REGISTER(controls, LOG_LEVEL_INF);
 
 static const struct device *codec;
-static volatile bool muted;
+static atomic_t mute_state;
 
 bool controls_muted(void)
 {
-	return muted;
+	return atomic_get(&mute_state);
 }
 
 static void mute_toggle(void)
 {
-	muted = !muted;
+	bool muted = !atomic_xor(&mute_state, 1);
 
 	if (IS_ENABLED(CONFIG_BROADCAST_ROLE_SINK)) {
 		audio_codec_set_property(codec, AUDIO_PROPERTY_OUTPUT_MUTE, AUDIO_CHANNEL_ALL,
@@ -54,6 +56,11 @@ static void input_cb(struct input_event *evt, void *user_data)
 	case INPUT_KEY_MUTE: /* H1 mute */
 		if (evt->value) {
 			mute_toggle();
+		}
+		break;
+	case INPUT_KEY_PLAYPAUSE: /* H1 smart button */
+		if (evt->value) {
+			strip_mode_next();
 		}
 		break;
 	default:

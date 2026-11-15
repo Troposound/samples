@@ -5,6 +5,5 @@ DT_ZEPHYR_USER := /zephyr,user
 
 config TROPOSOUND_VOLUME
 	bool "Output volume from the volume knob (R1) or rotary encoder (H1)"
-	depends on AUDIO_CODEC
 	select ADC if $(dt_node_has_prop,$(DT_ZEPHYR_USER),io-channels)
 	select SENSOR if $(dt_alias_enabled,qdec0)

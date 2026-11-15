@@ -8,10 +8,12 @@ and network core merged into one file: `bin/<board>/<sample>.hex`.
 | `blinky` | RGB LED cycle (LED strip on H1) |
 | `hw_test` | Hardware self-test, see [samples/hw_test](../samples/hw_test/README.md) |
 | `le_audio_broadcast_source` | Broadcasts the mic as "Troposound R1" / "Troposound H1" |
-| `le_audio_broadcast_sink` | Receives a broadcast and plays it on speaker/headphones |
+| `le_audio_broadcast_sink` | Receives a broadcast and plays it on speaker/headphones; on H1 the LED strip follows the music (smart button: next effect) |
 | `usb_audio` | USB Audio Class 2 headset |
+| `usb_broadcast` | USB speaker that broadcasts what the host plays as "Troposound R1 USB" / "Troposound H1 USB" |
 
-Flash a source on one board and a sink on the other.
+Flash a source (`le_audio_broadcast_source` or `usb_broadcast`) on one
+board and `le_audio_broadcast_sink` on the other.
 
 ## Flash
 

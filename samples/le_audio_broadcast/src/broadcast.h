@@ -8,8 +8,10 @@
 #define BROADCAST_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <zephyr/device.h>
+#include <zephyr/sys/util.h>
 
 enum led_state {
 	LED_STATE_OFF,
@@ -27,5 +29,21 @@ void controls_start(const struct device *codec);
 bool controls_muted(void);
 
 int role_run(void);
+
+#define STRIP_FRAME_SAMPLES 480 /* 10 ms of 48 kHz stereo, left in the low half-word */
+
+#if defined(CONFIG_BROADCAST_LED_STRIP)
+void strip_audio_feed(const uint32_t *pcm);
+void strip_mode_next(void);
+#else
+static inline void strip_audio_feed(const uint32_t *pcm)
+{
+	ARG_UNUSED(pcm);
+}
+
+static inline void strip_mode_next(void)
+{
+}
+#endif
 
 #endif /* BROADCAST_H_ */

@@ -55,6 +55,18 @@ config BROADCAST_VOLUME_HALF_DB
 	  The H1 rotary encoder starts here. The R1 volume knob sets the
 	  volume from its position.
 
+config BROADCAST_LED_STRIP
+	bool "Music-reactive LED strip"
+	default y
+	depends on BROADCAST_ROLE_SINK
+	depends on $(dt_alias_enabled,led-strip)
+	depends on DT_HAS_WORLDSEMI_WS2812_SPI_ENABLED
+	select SPI
+	help
+	  Lights the WS2812 led-strip alias to the received audio, scaled to
+	  its chain-length. The smart button cycles blue bass bloom, VU meter,
+	  spectrum, beat strobe, beat ripples and off.
+
 # Role-dependent defaults for the host stack. Defaults listed here take
 # precedence over the ones in Kconfig.zephyr below.
 config AUDIO
@@ -109,7 +121,7 @@ config BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT
 	default 1
 
 config BT_BAP_BROADCAST_SNK_STREAM_COUNT
-	default 1
+	default 2
 
 config BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT
 	default 1

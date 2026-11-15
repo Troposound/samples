@@ -25,6 +25,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net_buf.h>
+#include <zephyr/sys/atomic.h>
 
 #include "broadcast.h"
 
@@ -59,7 +60,7 @@ NET_BUF_POOL_FIXED_DEFINE(tx_pool, TX_BUF_COUNT, BT_ISO_SDU_BUF_SIZE(CONFIG_BT_I
 
 static struct bt_bap_stream stream;
 static struct bt_bap_broadcast_source *broadcast_source;
-static volatile bool streaming;
+static atomic_t streaming;
 static uint16_t seq_num;
 
 static lc3_encoder_mem_48k_t lc3_mem;
@@ -148,7 +149,7 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 	while (true) {
 		k_msgq_get(&pcm_q, &block, K_FOREVER);
 
-		if (!streaming) {
+		if (!atomic_get(&streaming)) {
 			continue;
 		}
 
@@ -194,14 +195,14 @@ K_THREAD_DEFINE(encoder_tid, 4096, encoder_thread, NULL, NULL, NULL, 5, 0, 0);
 static void stream_started_cb(struct bt_bap_stream *s)
 {
 	seq_num = 0;
-	streaming = true;
+	atomic_set(&streaming, true);
 	led_state_set(LED_STATE_STREAMING);
 	LOG_INF("BIS started");
 }
 
 static void stream_stopped_cb(struct bt_bap_stream *s, uint8_t reason)
 {
-	streaming = false;
+	atomic_set(&streaming, false);
 	led_state_set(LED_STATE_SEARCHING);
 	LOG_INF("BIS stopped (0x%02x)", reason);
 }

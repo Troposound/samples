@@ -23,6 +23,7 @@ hw_test:hw_test:
 le_audio_broadcast_source:le_audio_broadcast:
 le_audio_broadcast_sink:le_audio_broadcast:-DEXTRA_CONF_FILE=sink.conf
 usb_audio:usb_audio:
+usb_broadcast:usb_broadcast:
 "
 
 for board in $BOARDS; do

@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: USB broadcast
+  description: USB Audio Class 2 speaker broadcast as LE Audio (LC3, one BIS)
+common:
+  sysbuild: true
+  build_only: true
+  tags:
+    - bluetooth
+    - audio
+    - usb
+  integration_platforms:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+  platform_allow:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+tests:
+  sample.troposound.usb_broadcast: {}

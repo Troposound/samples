@@ -25,6 +25,7 @@ LOG_MODULE_REGISTER(volume, LOG_LEVEL_INF);
 #define POLL_PERIOD K_MSEC(50)
 
 static const struct device *codec;
+static volume_set_t apply;
 static int volume = INT_MIN;
 
 static void volume_set(int half_db)
@@ -35,9 +36,7 @@ static void volume_set(int half_db)
 	}
 
 	volume = half_db;
-	audio_codec_set_property(codec, AUDIO_PROPERTY_OUTPUT_VOLUME, AUDIO_CHANNEL_ALL,
-				 (audio_property_value_t){.vol = half_db});
-	audio_codec_apply_properties(codec);
+	apply(half_db);
 	LOG_INF("Volume %s%d.%d dB", half_db < 0 ? "-" : "", abs(half_db) / 2,
 		(abs(half_db) % 2) * 5);
 }
@@ -150,9 +149,23 @@ static void poll_handler(struct k_work *work)
 
 static K_WORK_DELAYABLE_DEFINE(poll_work, poll_handler);
 
+static void codec_volume_set(int half_db)
+{
+	audio_codec_set_property(codec, AUDIO_PROPERTY_OUTPUT_VOLUME, AUDIO_CHANNEL_ALL,
+				 (audio_property_value_t){.vol = half_db});
+	audio_codec_apply_properties(codec);
+}
+
 int volume_start(const struct device *dev, int initial_half_db)
 {
 	codec = dev;
+
+	return volume_start_cb(codec_volume_set, initial_half_db);
+}
+
+int volume_start_cb(volume_set_t set, int initial_half_db)
+{
+	apply = set;
 
 #if HAS_KNOB
 	int err = knob_init();

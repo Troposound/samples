@@ -5,8 +5,9 @@
  */
 
 /* LE Audio broadcast sink: scan for a Broadcast Audio Announcement, PA sync, read the
- * BASE, BIG sync to the first BIS, decode LC3 to 48 kHz and play it on both
- * TAC5211 headphone channels.
+ * BASE, BIG sync to its front left and front right BISes, decode LC3 to 48 kHz and play
+ * them on the TAC5211 left and right channels. A broadcast without a left/right pair
+ * plays its first BIS on both channels.
  */
 
 #include <string.h>
@@ -24,6 +25,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 
 #include "broadcast.h"
@@ -38,18 +40,21 @@ LOG_MODULE_REGISTER(broadcast_sink, LOG_LEVEL_INF);
 #define MAX_SDU        155
 #define STEP_TIMEOUT   K_SECONDS(5)
 #define NAME_LEN       (BT_AUDIO_BROADCAST_NAME_LEN_MAX + 1)
+#define MAX_STREAMS    2
 
 BUILD_ASSERT(AUDIO_I2S_BLOCK_WORDS == FRAME_SAMPLES, "I2S block must be one 10 ms LC3 frame");
+BUILD_ASSERT(STRIP_FRAME_SAMPLES == FRAME_SAMPLES);
 
 /* --- Audio output ------------------------------------------------------- */
 
 struct lc3_frame {
 	uint16_t len;
+	uint8_t stream;
 	bool valid;
 	uint8_t data[MAX_SDU];
 };
 
-K_MSGQ_DEFINE(frame_q, sizeof(struct lc3_frame), BLOCK_COUNT, 4);
+K_MSGQ_DEFINE(frame_q, sizeof(struct lc3_frame), MAX_STREAMS * BLOCK_COUNT, 4);
 K_MSGQ_DEFINE(free_q, sizeof(uint32_t *), BLOCK_COUNT, sizeof(uint32_t *));
 K_MSGQ_DEFINE(ready_q, sizeof(uint32_t *), BLOCK_COUNT, sizeof(uint32_t *));
 
@@ -58,8 +63,10 @@ static uint32_t tx_silence[FRAME_SAMPLES]; /* EasyDMA reads RAM only */
 static uint32_t rx_scratch[FRAME_SAMPLES]; /* capture is not used by the sink */
 static bool primed;
 
-static lc3_decoder_mem_48k_t lc3_mem;
-static lc3_decoder_t lc3_dec;
+static lc3_decoder_mem_48k_t lc3_mem[MAX_STREAMS];
+static lc3_decoder_t lc3_dec[MAX_STREAMS];
+static uint8_t stream_slot[MAX_STREAMS]; /* 0 left, 1 right */
+static size_t stream_count;
 
 static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 {
@@ -90,28 +97,69 @@ static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 	(void)audio_i2s_set_next_buf(next, rx_scratch);
 }
 
-static void decoder_thread(void *p1, void *p2, void *p3)
+static void frames_play(const struct lc3_frame *frames, uint32_t have)
 {
-	struct lc3_frame frame;
+	const size_t count = stream_count;
 	uint32_t *blk;
 
-	while (true) {
-		k_msgq_get(&frame_q, &frame, K_FOREVER);
-
-		if (lc3_dec == NULL || k_msgq_get(&free_q, &blk, K_NO_WAIT) != 0) {
-			continue; /* not configured, or playback is behind: drop */
+	for (size_t i = 0; i < count; i++) {
+		if (lc3_dec[i] == NULL) {
+			return; /* not configured yet */
 		}
+	}
+
+	if (k_msgq_get(&free_q, &blk, K_NO_WAIT) != 0) {
+		return; /* playback is behind: drop */
+	}
+
+	for (size_t i = 0; i < count; i++) {
+		const struct lc3_frame *f = &frames[i];
+		const bool ok = (have & BIT(i)) && f->valid;
 
 		/* NULL input runs packet loss concealment */
-		(void)lc3_decode(lc3_dec, frame.valid ? frame.data : NULL, frame.len,
-				 LC3_PCM_FORMAT_S16, (int16_t *)blk, 2);
+		(void)lc3_decode(lc3_dec[i], ok ? f->data : NULL, f->len, LC3_PCM_FORMAT_S16,
+				 (int16_t *)blk + stream_slot[i], 2);
+	}
 
+	if (count == 1) {
 		/* Mono to both slots: left is in the low half-word */
 		for (size_t i = 0; i < FRAME_SAMPLES; i++) {
 			blk[i] = (blk[i] & 0xFFFFU) | (blk[i] << 16);
 		}
+	}
 
-		(void)k_msgq_put(&ready_q, &blk, K_NO_WAIT);
+	strip_audio_feed(blk);
+	(void)k_msgq_put(&ready_q, &blk, K_NO_WAIT);
+}
+
+/* Each BIS delivers one frame per BIG event, valid or not, so a frame pairs
+ * with the others that arrived since; a stream seen twice closes the event.
+ */
+static void decoder_thread(void *p1, void *p2, void *p3)
+{
+	static struct lc3_frame frames[MAX_STREAMS];
+	struct lc3_frame frame;
+	uint32_t have = 0;
+
+	while (true) {
+		k_msgq_get(&frame_q, &frame, K_FOREVER);
+
+		if (frame.stream >= stream_count) {
+			continue;
+		}
+
+		if (have & BIT(frame.stream)) {
+			frames_play(frames, have);
+			have = 0;
+		}
+
+		frames[frame.stream] = frame;
+		have |= BIT(frame.stream);
+
+		if (have == BIT_MASK(stream_count)) {
+			frames_play(frames, have);
+			have = 0;
+		}
 	}
 }
 
@@ -180,19 +228,19 @@ static K_SEM_DEFINE(sem_found, 0, 1);
 static K_SEM_DEFINE(sem_pa_synced, 0, 1);
 static K_SEM_DEFINE(sem_base, 0, 1);
 static K_SEM_DEFINE(sem_syncable, 0, 1);
-static K_SEM_DEFINE(sem_started, 0, 1);
+static K_SEM_DEFINE(sem_started, 0, MAX_STREAMS);
 static K_SEM_DEFINE(sem_lost, 0, 1);
 static K_SEM_DEFINE(sem_stopped, 0, 1);
 
-static struct bt_bap_stream stream;
-static struct bt_bap_stream *streams[] = {&stream};
+static struct bt_bap_stream stream_pool[MAX_STREAMS];
+static struct bt_bap_stream *streams[] = {&stream_pool[0], &stream_pool[1]};
 static struct bt_bap_broadcast_sink *sink;
 static struct bt_le_per_adv_sync *pa_sync;
 static bt_addr_le_t found_addr;
 static uint8_t found_sid;
 static uint16_t found_interval;
 static uint32_t found_id;
-static volatile bool searching;
+static atomic_t searching;
 static uint32_t bis_bitfield;
 static bool big_encrypted;
 
@@ -208,7 +256,9 @@ static struct bt_pacs_cap cap = {
 
 static void stream_started_cb(struct bt_bap_stream *s)
 {
+	const size_t idx = s - stream_pool;
 	const struct bt_audio_codec_cfg *cfg = s->codec_cfg;
+	enum bt_audio_location loc;
 	int freq = bt_audio_codec_cfg_get_freq(cfg);
 	int dur = bt_audio_codec_cfg_get_frame_dur(cfg);
 	int freq_hz = freq > 0 ? bt_audio_codec_cfg_freq_to_freq_hz(freq) : -1;
@@ -219,8 +269,15 @@ static void stream_started_cb(struct bt_bap_stream *s)
 		return;
 	}
 
-	lc3_dec = lc3_setup_decoder(FRAME_US, freq_hz, PCM_RATE_HZ, &lc3_mem);
-	LOG_INF("BIS started: LC3 %d Hz, %d octets", freq_hz,
+	if (bt_audio_codec_cfg_get_chan_allocation(cfg, &loc, true) != 0) {
+		loc = BT_AUDIO_LOCATION_MONO_AUDIO;
+	}
+	stream_slot[idx] = stream_count > 1 && (loc & BT_AUDIO_LOCATION_FRONT_RIGHT) &&
+			   !(loc & BT_AUDIO_LOCATION_FRONT_LEFT);
+
+	lc3_dec[idx] = lc3_setup_decoder(FRAME_US, freq_hz, PCM_RATE_HZ, &lc3_mem[idx]);
+	LOG_INF("BIS %s started: LC3 %d Hz, %d octets",
+		stream_count == 1 ? "mono" : (stream_slot[idx] ? "right" : "left"), freq_hz,
 		bt_audio_codec_cfg_get_octets_per_frame(cfg));
 	k_sem_give(&sem_started);
 }
@@ -228,7 +285,7 @@ static void stream_started_cb(struct bt_bap_stream *s)
 static void stream_stopped_cb(struct bt_bap_stream *s, uint8_t reason)
 {
 	LOG_INF("BIS stopped (0x%02x)", reason);
-	lc3_dec = NULL;
+	lc3_dec[s - stream_pool] = NULL;
 	k_sem_give(&sem_lost);
 }
 
@@ -236,6 +293,7 @@ static void stream_recv_cb(struct bt_bap_stream *s, const struct bt_iso_recv_inf
 			   struct net_buf *buf)
 {
 	struct lc3_frame frame = {
+		.stream = s - stream_pool,
 		.valid = (info->flags & BT_ISO_FLAGS_VALID) && buf->len > 0 && buf->len <= MAX_SDU,
 	};
 
@@ -253,16 +311,87 @@ static struct bt_bap_stream_ops stream_ops = {
 	.recv = stream_recv_cb,
 };
 
+struct bis_choice {
+	enum bt_audio_location subgroup_loc;
+	uint8_t first;
+	uint8_t left;
+	uint8_t right;
+};
+
+static enum bt_audio_location chan_allocation(const struct bt_audio_codec_cfg *cfg,
+					      enum bt_audio_location fallback)
+{
+	enum bt_audio_location loc;
+
+	return bt_audio_codec_cfg_get_chan_allocation(cfg, &loc, false) == 0 ? loc : fallback;
+}
+
+static bool base_bis_cb(const struct bt_bap_base_subgroup_bis *bis, void *user_data)
+{
+	struct bis_choice *c = user_data;
+	struct bt_audio_codec_cfg cfg = {0};
+	enum bt_audio_location loc = c->subgroup_loc;
+
+	if (bt_bap_base_subgroup_bis_codec_to_codec_cfg(bis, &cfg) == 0) {
+		loc = chan_allocation(&cfg, loc);
+	}
+
+	loc &= BT_AUDIO_LOCATION_FRONT_LEFT | BT_AUDIO_LOCATION_FRONT_RIGHT;
+
+	if (c->first == 0) {
+		c->first = bis->index;
+	}
+	if (loc == BT_AUDIO_LOCATION_FRONT_LEFT && c->left == 0) {
+		c->left = bis->index;
+	} else if (loc == BT_AUDIO_LOCATION_FRONT_RIGHT && c->right == 0) {
+		c->right = bis->index;
+	}
+
+	return true;
+}
+
+static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *user_data)
+{
+	struct bis_choice *c = user_data;
+	struct bt_audio_codec_cfg cfg = {0};
+
+	/* A left/right pair has to come from one subgroup. */
+	c->left = 0;
+	c->right = 0;
+	c->subgroup_loc = BT_AUDIO_LOCATION_MONO_AUDIO;
+	if (bt_bap_base_subgroup_codec_to_codec_cfg(subgroup, &cfg) == 0) {
+		c->subgroup_loc = chan_allocation(&cfg, BT_AUDIO_LOCATION_MONO_AUDIO);
+	}
+
+	(void)bt_bap_base_subgroup_foreach_bis(subgroup, base_bis_cb, c);
+
+	return c->left == 0 || c->right == 0;
+}
+
 static void base_recv_cb(struct bt_bap_broadcast_sink *s, const struct bt_bap_base *base,
 			 size_t base_size)
 {
-	uint32_t bits = 0;
+	struct bis_choice c = {0};
+	int err;
 
-	if (bis_bitfield != 0 || bt_bap_base_get_bis_indexes(base, &bits) != 0 || bits == 0) {
+	if (bis_bitfield != 0) {
 		return;
 	}
 
-	bis_bitfield = bits & -bits; /* lowest BIS index */
+	/* -ECANCELED: stopped early on a left/right pair */
+	err = bt_bap_base_foreach_subgroup(base, base_subgroup_cb, &c);
+	if ((err != 0 && err != -ECANCELED) || c.first == 0) {
+		return;
+	}
+
+	if (c.left != 0 && c.right != 0) {
+		stream_count = 2;
+		bis_bitfield = BT_ISO_BIS_INDEX_BIT(c.left) | BT_ISO_BIS_INDEX_BIT(c.right);
+	} else {
+		stream_count = 1;
+		bis_bitfield = BT_ISO_BIS_INDEX_BIT(c.first);
+	}
+
 	k_sem_give(&sem_base);
 }
 
@@ -344,7 +473,7 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf
 		.name_match = strlen(CONFIG_BROADCAST_TARGET_NAME) == 0,
 	};
 
-	if (!searching || info->interval == 0U) {
+	if (!atomic_get(&searching) || info->interval == 0U) {
 		return; /* no periodic advertising, so not a broadcast source */
 	}
 
@@ -354,7 +483,7 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf
 		return;
 	}
 
-	searching = false;
+	atomic_set(&searching, false);
 	bt_addr_le_copy(&found_addr, info->addr);
 	found_sid = info->sid;
 	found_interval = info->interval;
@@ -447,8 +576,12 @@ static void session_reset(void)
 		pa_sync = NULL;
 	}
 
-	lc3_dec = NULL;
+	for (size_t i = 0; i < MAX_STREAMS; i++) {
+		lc3_dec[i] = NULL;
+	}
+	stream_count = 0;
 	bis_bitfield = 0;
+	k_msgq_purge(&frame_q);
 	k_sem_reset(&sem_found);
 	k_sem_reset(&sem_pa_synced);
 	k_sem_reset(&sem_base);
@@ -469,7 +602,7 @@ static int session_run(void)
 		strlen(CONFIG_BROADCAST_TARGET_NAME) ? "broadcast " : "any broadcast",
 		CONFIG_BROADCAST_TARGET_NAME);
 
-	searching = true;
+	atomic_set(&searching, true);
 	err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, NULL);
 	if (err && err != -EALREADY) {
 		LOG_ERR("scan_start failed (%d)", err);
@@ -519,9 +652,11 @@ static int session_run(void)
 		return err;
 	}
 
-	if (k_sem_take(&sem_started, STEP_TIMEOUT)) {
-		LOG_WRN("BIG sync timeout");
-		return -ETIMEDOUT;
+	for (size_t i = 0; i < stream_count; i++) {
+		if (k_sem_take(&sem_started, STEP_TIMEOUT)) {
+			LOG_WRN("BIG sync timeout");
+			return -ETIMEDOUT;
+		}
 	}
 
 	led_state_set(LED_STATE_STREAMING);
@@ -571,7 +706,9 @@ int role_run(void)
 		return err;
 	}
 
-	bt_bap_stream_cb_register(&stream, &stream_ops);
+	for (size_t i = 0; i < MAX_STREAMS; i++) {
+		bt_bap_stream_cb_register(&stream_pool[i], &stream_ops);
+	}
 	bt_le_per_adv_sync_cb_register(&pa_cb);
 	bt_le_scan_cb_register(&scan_cb);
 
