@@ -8,6 +8,8 @@
 #define TROPOSOUND_HEADSET_H_
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include <zephyr/device.h>
 
@@ -19,5 +21,10 @@ int headset_start(const struct device *codec);
 
 /* Speaker amplifier on while playing, unless a headset is plugged in. */
 void headset_speaker_set(bool playing);
+
+/* Headset mic only: fixed gain into a soft clipper, in place on every
+ * stride-th sample. No-op with the built-in mic.
+ */
+void headset_mic_gain(int16_t *pcm, size_t n, size_t stride);
 
 #endif /* TROPOSOUND_HEADSET_H_ */

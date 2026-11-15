@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <math.h>
+#include <stdlib.h>
+
 #include <troposound/headset.h>
 #include <troposound/tac5211.h>
 #include <zephyr/drivers/gpio.h>
@@ -50,6 +53,25 @@ void headset_speaker_set(bool on)
 #if HAS_JACK
 static const struct gpio_dt_spec jack = GPIO_DT_SPEC_GET(JACK_NODE, gpios);
 
+/* Linear to -9 dBFS, 1:4 above, ceiling at -1 dBFS. */
+#define CLIP_KNEE  11627
+#define CLIP_CEIL  29205
+#define CLIP_SLOPE 4
+
+static int32_t mic_gain_q8;
+
+static int16_t soft_clip(int32_t v)
+{
+	int32_t a = abs(v);
+
+	if (a <= CLIP_KNEE) {
+		return v;
+	}
+
+	a = MIN(CLIP_KNEE + (a - CLIP_KNEE) / CLIP_SLOPE, CLIP_CEIL);
+	return v < 0 ? -a : a;
+}
+
 static void jack_set(bool in)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
@@ -82,6 +104,23 @@ static void jack_cb(struct input_event *evt, void *user_data)
 INPUT_CALLBACK_DEFINE(NULL, jack_cb, NULL);
 #endif /* HAS_JACK */
 
+void headset_mic_gain(int16_t *pcm, size_t n, size_t stride)
+{
+#if HAS_JACK
+	if (!inserted) {
+		return;
+	}
+
+	for (size_t i = 0; i < n * stride; i += stride) {
+		pcm[i] = soft_clip((pcm[i] * mic_gain_q8) >> 8);
+	}
+#else
+	ARG_UNUSED(pcm);
+	ARG_UNUSED(n);
+	ARG_UNUSED(stride);
+#endif
+}
+
 int headset_start(const struct device *dev)
 {
 #if HAS_AMP
@@ -96,6 +135,8 @@ int headset_start(const struct device *dev)
 	codec = dev;
 
 #if HAS_JACK
+	mic_gain_q8 = lroundf(256.0f * powf(10.0f, CONFIG_TROPOSOUND_HEADSET_MIC_GAIN_DB / 20.0f));
+
 	/* gpio-keys only reports changes. */
 	jack_set(gpio_pin_get_dt(&jack) == 1);
 #endif

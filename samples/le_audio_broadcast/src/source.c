@@ -12,6 +12,7 @@
 
 #include <lc3.h>
 #include <troposound/audio_i2s.h>
+#include <troposound/headset.h>
 #include <zephyr/audio/codec.h>
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/bluetooth/audio/bap.h>
@@ -155,6 +156,8 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 		const uint32_t *pcm = controls_muted() ? mute_silence : block;
 
 		/* stride 2 = left slot of each stereo word (mic is on ADC channel 1) */
+		headset_mic_gain((int16_t *)block, FRAME_SAMPLES, 2);
+
 		if (lc3_encode(lc3_enc, LC3_PCM_FORMAT_S16, (const int16_t *)pcm, 2, octets,
 			       sdu) != 0) {
 			LOG_ERR("lc3_encode failed");

@@ -6,3 +6,13 @@ config TROPOSOUND_HEADSET
 	depends on AUDIO_CODEC_TAC5211
 	select GPIO
 	select INPUT if $(dt_alias_enabled,jack-detect)
+
+config TROPOSOUND_HEADSET_MIC_GAIN_DB
+	int "Headset mic gain on top of the codec, in dB"
+	range 0 30
+	default 24
+	depends on TROPOSOUND_HEADSET
+	help
+	  Headset mics are far quieter than the built-in one. The codec adds
+	  TAC5211_ADC_GAIN_EXT_EXTRA_HALF_DB, this adds the rest in software
+	  through a soft clipper.

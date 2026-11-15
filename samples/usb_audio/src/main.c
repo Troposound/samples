@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/usb/usb_buf.h>
 #include <zephyr/audio/codec.h>
 #include <zephyr/kernel.h>
@@ -92,6 +93,7 @@ K_MEM_SLAB_DEFINE_STATIC(mic_slab, ROUND_UP(MIC_MAX_BYTES, UDC_BUF_GRANULARITY),
 
 static const struct device *const uac2_dev = DEVICE_DT_GET(DT_NODELABEL(uac2_headset));
 static const struct device *const codec_dev = DEVICE_DT_GET_ONE(ti_tac5211);
+static const struct gpio_dt_spec on_led = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
 
 USBD_DEVICE_DEFINE(usbd_ctx, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), CONFIG_APP_USB_VID,
 		   CONFIG_APP_USB_PID);
@@ -151,13 +153,14 @@ static void fill_tx(uint32_t *tx)
 	atomic_set(&play_tail, tail + n);
 }
 
-static void push_mic(const uint32_t *rx)
+static void push_mic(uint32_t *rx)
 {
 	uint32_t head = (uint32_t)atomic_get(&mic_head);
 	uint32_t space = MIC_RING_SAMPLES - (head - (uint32_t)atomic_get(&mic_tail));
 	uint32_t n = MIN(space, AUDIO_I2S_BLOCK_WORDS);
 
 	/* ADC channel 1 sits in the left slot (low half-word). */
+	headset_mic_gain((int16_t *)rx, n, 2);
 	for (uint32_t i = 0; i < n; i++) {
 		mic_ring[(head + i) & (MIC_RING_SAMPLES - 1)] = (int16_t)(rx[i] & 0xFFFF);
 	}
@@ -417,6 +420,8 @@ int main(void)
 	if (ret) {
 		return ret;
 	}
+
+	(void)gpio_pin_configure_dt(&on_led, GPIO_OUTPUT_ACTIVE);
 
 	while (true) {
 		uint32_t under, late;

@@ -45,7 +45,8 @@ Twister: `sample.troposound.le_audio_broadcast.source` and `.sink`.
 | TRRS headset | Headphone jack | - | Headset mic instead of the built-in mic | Headset instead of the speaker |
 
 Headset mode follows the R1 jack in both roles: capture switches to the
-headset mic (IN2P), the speaker EQ is bypassed and the speaker amplifier stays
+headset mic (IN2P) with 30 dB more gain (6 dB in the codec, 24 dB in
+software into a soft clipper), the speaker EQ is bypassed and the speaker amplifier stays
 off. Without a headset the amplifier is on only while a BIS is playing.
 
 ## LEDs

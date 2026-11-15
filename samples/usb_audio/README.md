@@ -24,8 +24,10 @@ control requests, so the host's software volume applies on top.
 | | R1 | H1 |
 |-|----|----|
 | Speaker | Amplifier on while the host plays, off in headset mode | - |
-| Microphone | Built-in (IN1P), headset mic (IN2P) in headset mode | Built-in (IN1P) |
+| Microphone | Built-in (IN1P); in headset mode the headset mic (IN2P) with +30 dB more gain | Built-in (IN1P) |
 | Headset mode | TRRS headset in the jack: headset mic, speaker off, speaker EQ bypassed | - |
+
+The green LED is on while the soundcard runs.
 
 Log output (UART): USB events, stream start/stop, and once per second while
 any stream is open:
