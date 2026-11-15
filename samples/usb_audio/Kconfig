@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+menu "USB audio sample"
+
+config APP_USB_VID
+	hex "USB vendor ID"
+	default 0x1915
+
+config APP_USB_PID
+	hex "USB product ID"
+	default 0x530C
+	help
+	  Distinct PID so hosts do not reuse cached descriptors from other
+	  Troposound firmware.
+
+config APP_USB_PRODUCT
+	string "USB product string"
+	default "Troposound R1" if BOARD_R1
+	default "Troposound H1" if BOARD_H1
+	default "Troposound"
+
+endmenu
+
+source "Kconfig.zephyr"

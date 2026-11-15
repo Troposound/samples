@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: Blinky
+  description: Cycles the RGB LED and drives the LED strip where present
+common:
+  sysbuild: true
+  build_only: true
+  filter: dt_alias_exists("led0") and dt_alias_exists("led1") and dt_alias_exists("led2")
+  integration_platforms:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+tests:
+  sample.troposound.blinky: {}

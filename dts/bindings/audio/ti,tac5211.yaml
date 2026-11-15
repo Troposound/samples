@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+description: TI TAC5211 audio codec
+
+compatible: "ti,tac5211"
+
+include: i2c-device.yaml
+
+properties:
+  reset-gpios:
+    type: phandle-array
+    description: Optional GPIO used to reset the codec.

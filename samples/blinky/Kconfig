@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+config BLINKY_LED_STRIP
+	bool "LED strip"
+	default y
+	depends on DT_HAS_WORLDSEMI_WS2812_SPI_ENABLED
+	select SPI
+
+source "Kconfig.zephyr"

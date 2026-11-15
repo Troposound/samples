@@ -1,0 +1,84 @@
+/*
+ * Copyright (c) 2026 Troposound
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <nordic/nrf5340_cpunet_qkaa.dtsi>
+
+/ {
+	model = "Troposound R1 NRF5340 Network";
+	compatible = "troposound,r1-nrf5340-cpunet";
+
+	chosen {
+		zephyr,bt-hci-ipc = &ipc0;
+		zephyr,sram = &sram1;
+		zephyr,flash = &flash1;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+	nrf_radio_fem: nrf21540_fem {
+		compatible = "nordic,nrf21540-fem";
+		tx-en-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
+		rx-en-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
+		pdn-gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
+		/* Held inactive (low) by MPSL: ANT1, the on-module PCB antenna. */
+		ant-sel-gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+		supply-voltage-mv = <3300>;
+	};
+
+	aliases {
+		watchdog0 = &wdt0;
+	};
+};
+
+&radio {
+	fem = <&nrf_radio_fem>;
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&flash1 {
+	partitions {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		boot_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
+			label = "mcuboot";
+			reg = <0x00000000 0xc000>;
+		};
+
+		slot0_partition: partition@c000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x0000c000 0x17000>;
+		};
+
+		slot1_partition: partition@23000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x00023000 0x17000>;
+		};
+
+		storage_partition: partition@3a000 {
+			compatible = "zephyr,mapped-partition";
+			label = "storage";
+			reg = <0x0003a000 0x6000>;
+		};
+	};
+};
+
+#include <nordic/nrf5340_shared_sram_partition.dtsi>

@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: USB Audio
+  description: USB Audio Class 2 soundcard (48 kHz stereo playback, mono mic) on the TAC5211
+common:
+  sysbuild: true
+  build_only: true
+  integration_platforms:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+tests:
+  sample.troposound.usb_audio:
+    platform_allow:
+      - h1/nrf5340/cpuapp
+      - r1/nrf5340/cpuapp

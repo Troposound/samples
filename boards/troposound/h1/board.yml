@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+board:
+  name: h1
+  full_name: H1
+  vendor: troposound
+  socs:
+    - name: nrf5340

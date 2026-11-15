@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+identifier: h1/nrf5340/cpunet
+name: H1-NRF5340-network-MCU
+type: mcu
+arch: arm
+toolchain:
+  - gnuarmemb
+  - zephyr
+ram: 64
+flash: 256
+supported:
+  - gpio
+  - watchdog
+vendor: troposound

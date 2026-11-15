@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+config TROPOSOUND_HEADSET
+	bool "Headset mode on the headphone jack (R1)"
+	depends on AUDIO_CODEC_TAC5211
+	select GPIO
+	select INPUT if $(dt_alias_enabled,jack-detect)

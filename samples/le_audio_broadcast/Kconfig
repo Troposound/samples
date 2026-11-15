@@ -1,0 +1,120 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Troposound LE Audio broadcast"
+
+choice BROADCAST_ROLE
+	prompt "LE Audio broadcast role"
+	default BROADCAST_ROLE_SOURCE
+
+config BROADCAST_ROLE_SOURCE
+	bool "Broadcast source (microphone -> LC3 -> BIG)"
+
+config BROADCAST_ROLE_SINK
+	bool "Broadcast sink (BIG -> LC3 -> headphones)"
+
+endchoice
+
+config BROADCAST_NAME
+	string "Broadcast name"
+	default "Troposound R1" if BOARD_R1
+	default "Troposound H1" if BOARD_H1
+	default "Troposound"
+	depends on BROADCAST_ROLE_SOURCE
+	help
+	  Broadcast_Name AD shown by phones and broadcast assistants (4-32 bytes).
+
+choice BROADCAST_SAMPLE_RATE
+	prompt "LC3 sample rate (mono, 10 ms frames)"
+	default BROADCAST_SAMPLE_RATE_24K
+	depends on BROADCAST_ROLE_SOURCE
+
+config BROADCAST_SAMPLE_RATE_24K
+	bool "24 kHz, 60 octets (BAP 24_2_1, PBP standard quality)"
+
+config BROADCAST_SAMPLE_RATE_48K
+	bool "48 kHz, 100 octets (BAP 48_2_1, PBP high quality)"
+
+endchoice
+
+config BROADCAST_TARGET_NAME
+	string "Broadcast name filter (substring, empty = any)"
+	default ""
+	depends on BROADCAST_ROLE_SINK
+	help
+	  Sink only syncs to a broadcast whose Broadcast_Name or device name
+	  contains this string (case-insensitive). Empty syncs to the first
+	  broadcast audio source found.
+
+config BROADCAST_VOLUME_HALF_DB
+	int "Start-up volume with the rotary encoder, in 0.5 dB steps"
+	range -120 12
+	default -20
+	depends on BROADCAST_ROLE_SINK
+	help
+	  The H1 rotary encoder starts here. The R1 volume knob sets the
+	  volume from its position.
+
+# Role-dependent defaults for the host stack. Defaults listed here take
+# precedence over the ones in Kconfig.zephyr below.
+config AUDIO
+	default y
+
+config AUDIO_CODEC
+	default y
+
+config TROPOSOUND_AUDIO_I2S
+	default y
+
+config BT_ISO_BROADCASTER
+	default y if BROADCAST_ROLE_SOURCE
+
+config BT_BAP_BROADCAST_SOURCE
+	default y if BROADCAST_ROLE_SOURCE
+
+config BT_PBP
+	default y if BROADCAST_ROLE_SOURCE
+
+config BT_OBSERVER
+	default y if BROADCAST_ROLE_SINK
+
+config BT_PERIPHERAL
+	default y if BROADCAST_ROLE_SINK
+
+config BT_PER_ADV_SYNC
+	default y if BROADCAST_ROLE_SINK
+
+config BT_ISO_SYNC_RECEIVER
+	default y if BROADCAST_ROLE_SINK
+
+config BT_SMP
+	default y if BROADCAST_ROLE_SINK
+
+config BT_GATT_DYNAMIC_DB
+	default y if BROADCAST_ROLE_SINK
+
+config BT_PAC_SNK
+	default y if BROADCAST_ROLE_SINK
+
+config BT_BAP_SCAN_DELEGATOR
+	default y if BROADCAST_ROLE_SINK
+
+config BT_BAP_BROADCAST_SINK
+	default y if BROADCAST_ROLE_SINK
+
+config BT_BAP_BROADCAST_SRC_STREAM_COUNT
+	default 1
+
+config BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT
+	default 1
+
+config BT_BAP_BROADCAST_SNK_STREAM_COUNT
+	default 1
+
+config BT_BAP_BROADCAST_SNK_SUBGROUP_COUNT
+	default 1
+
+config BT_BAP_BASS_MAX_SUBGROUPS
+	default 1
+
+source "Kconfig.zephyr"

@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: Hardware test
+  description: Board bring-up self-test for every peripheral on R1 and H1
+common:
+  sysbuild: true
+  build_only: true
+  integration_platforms:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+tests:
+  sample.troposound.hw_test:
+    platform_allow:
+      - h1/nrf5340/cpuapp
+      - r1/nrf5340/cpuapp

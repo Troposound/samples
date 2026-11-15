@@ -1,0 +1,62 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+config AUDIO_CODEC_TAC5211
+	bool "TI TAC5211 audio codec"
+	default y
+	depends on DT_HAS_TI_TAC5211_ENABLED && AUDIO_CODEC
+	select I2C
+	select GPIO
+	help
+	  Enable the TAC5211 codec driver.
+
+config TAC5211_INIT_PRIORITY
+	int "TAC5211 init priority"
+	default 60
+	depends on AUDIO_CODEC_TAC5211
+	help
+	  POST_KERNEL init priority. Must be higher (later) than the I2C
+	  controller's priority so the bus is ready when the codec inits.
+
+config TAC5211_ADC_GAIN_HALF_DB
+	int "Microphone ADC digital gain (0.5 dB steps)"
+	range 0 94
+	default 60
+	depends on AUDIO_CODEC_TAC5211
+	help
+	  Gain written to ADC_CH1_CFG2, the codec's capture digital volume.
+	  0 is the reset value (0 dB), 94 is the ceiling (+47 dB). Half-dB
+	  steps match the register exactly, so nothing is rounded, and match
+	  the driver's existing playback volume convention.
+
+	  Applies to BOTH microphones. The jack-detect switch swaps IN1P and
+	  IN2P through the ADC channel mux, so the internal and headset mics
+	  share ADC channel 1. TAC5211_ADC_GAIN_EXT_EXTRA_HALF_DB adds to it
+	  for the headset mic only.
+
+	  Prefer this over raising USB_MIC_GAIN or GRPTLK_UPLINK_MIC_GAIN:
+	  those multiply the 16-bit I2S samples in software and lift
+	  quantisation noise with the signal, while this sits inside the codec
+	  ahead of the 16-bit word, drawing on the ADC's full dynamic range.
+
+	  This is the only meaningful gain in the capture path -- the TAC5211
+	  has no analog PGA, MICBIAS is already at its maximum, and the
+	  full-scale setting only trades sensitivity away.
+
+	  The default of 60 half-dB steps is +30 dB, deliberately short of what the measured
+	  microphone level suggests, because that measurement is a single-frame
+	  peak snapshot and clipping is worse than quiet. Raise it if speech
+	  still sits low; lower it if loud close speech pins the peak counters.
+
+config TAC5211_ADC_GAIN_EXT_EXTRA_HALF_DB
+	int "Extra ADC gain while the headset mic is selected (0.5 dB steps)"
+	range 0 94
+	default 12
+	depends on AUDIO_CODEC_TAC5211
+	help
+	  Added to TAC5211_ADC_GAIN_HALF_DB while the headset mic (IN2P) is the
+	  capture input. The sum is clamped to the +47 dB register maximum.
+
+module = TAC5211
+module-str = tac5211
+source "subsys/logging/Kconfig.template.log_config"

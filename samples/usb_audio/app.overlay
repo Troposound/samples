@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2026 Troposound
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * UAC2 headset: 48 kHz 16-bit stereo OUT (host -> headphones/speaker) and
+ * mono IN (microphone -> host). Both endpoints are asynchronous with
+ * implicit feedback: the nRF5340 USBD has a single isochronous IN endpoint,
+ * so the mic stream (sized from the I2S clock) paces the host. No Feature
+ * Unit: the UAC2 class does not service its control requests.
+ */
+
+#include <zephyr/dt-bindings/usb/audio.h>
+
+/ {
+	uac2_headset: usb_audio2 {
+		compatible = "zephyr,uac2";
+		status = "okay";
+		full-speed;
+		audio-function = <AUDIO_FUNCTION_HEADSET>;
+
+		uac_aclk: aclk {
+			compatible = "zephyr,uac2-clock-source";
+			clock-type = "internal-fixed";
+			frequency-control = "read-only";
+			sampling-frequencies = <48000>;
+		};
+
+		out_terminal: out_terminal {
+			compatible = "zephyr,uac2-input-terminal";
+			clock-source = <&uac_aclk>;
+			terminal-type = <USB_TERMINAL_STREAMING>;
+			front-left;
+			front-right;
+		};
+
+		headphones_output: headphones {
+			compatible = "zephyr,uac2-output-terminal";
+			data-source = <&out_terminal>;
+			clock-source = <&uac_aclk>;
+			terminal-type = <BIDIRECTIONAL_TERMINAL_HEADSET>;
+			assoc-terminal = <&mic_input>;
+		};
+
+		mic_input: microphone {
+			compatible = "zephyr,uac2-input-terminal";
+			clock-source = <&uac_aclk>;
+			terminal-type = <BIDIRECTIONAL_TERMINAL_HEADSET>;
+			front-left;
+		};
+
+		in_terminal: in_terminal {
+			compatible = "zephyr,uac2-output-terminal";
+			data-source = <&mic_input>;
+			clock-source = <&uac_aclk>;
+			terminal-type = <USB_TERMINAL_STREAMING>;
+		};
+
+		as_iso_out: out_interface {
+			compatible = "zephyr,uac2-audio-streaming";
+			linked-terminal = <&out_terminal>;
+			subslot-size = <2>;
+			bit-resolution = <16>;
+			implicit-feedback;
+		};
+
+		as_iso_in: in_interface {
+			compatible = "zephyr,uac2-audio-streaming";
+			linked-terminal = <&in_terminal>;
+			subslot-size = <2>;
+			bit-resolution = <16>;
+			implicit-feedback;
+		};
+	};
+};

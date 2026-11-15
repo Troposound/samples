@@ -1,0 +1,261 @@
+/*
+ * Copyright (c) 2026 Troposound
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <nordic/nrf5340_cpuapp_qkaa.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/led/led.h>
+#include "h1_nrf5340_cpuapp-pinctrl.dtsi"
+
+/ {
+	model = "Troposound H1 NRF5340 Application";
+	compatible = "troposound,h1-nrf5340-cpuapp";
+
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+		zephyr,uart-mcumgr = &uart0;
+		zephyr,bt-mon-uart = &uart0;
+		zephyr,bt-c2h-uart = &uart0;
+		zephyr,bt-hci = &bt_hci_ipc0;
+		zephyr,sram = &sram0_image;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,sram-secure-partition = &sram0_s;
+		zephyr,sram-non-secure-partition = &sram0_ns;
+		zephyr,boot-mode = &boot_mode0;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		red_led: led_0 {
+			gpios = <&gpio0 28 GPIO_ACTIVE_LOW>;
+			label = "Red LED";
+		};
+
+		green_led: led_1 {
+			gpios = <&gpio0 6 GPIO_ACTIVE_LOW>;
+			label = "Green LED";
+		};
+
+		blue_led: led_2 {
+			gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
+			label = "Blue LED";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		power_button: button_0 {
+			gpios = <&gpio0 8 GPIO_ACTIVE_LOW>;
+			label = "Power button";
+			zephyr,code = <INPUT_KEY_POWER>;
+		};
+
+		mute_button: button_1 {
+			gpios = <&gpio0 24 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Mute button";
+			zephyr,code = <INPUT_KEY_MUTE>;
+		};
+
+		smart_button: button_2 {
+			gpios = <&gpio0 23 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Smart button";
+			zephyr,code = <INPUT_KEY_PLAYPAUSE>;
+		};
+	};
+
+	gpio_inputs {
+		compatible = "gpio-keys";
+
+		charge_status: charge_status {
+			gpios = <&gpio0 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Charge status";
+			zephyr,code = <INPUT_KEY_2>;
+		};
+
+		fuel_gauge_alert: fuel_gauge_alert {
+			gpios = <&gpio0 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Fuel gauge alert";
+			zephyr,code = <INPUT_KEY_3>;
+		};
+	};
+
+	/* Qwiic connector J2, 10k pull-ups on board. No free TWIM instance,
+	 * so it is bit-banged.
+	 */
+	qwiic_i2c: qwiic-i2c {
+		compatible = "gpio-i2c";
+		status = "okay";
+		clock-frequency = <I2C_BITRATE_STANDARD>;
+		scl-gpios = <&gpio0 5 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		sda-gpios = <&gpio0 25 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	gpio_fwd: nrf-gpio-forwarder {
+		compatible = "nordic,nrf-gpio-forwarder";
+		status = "okay";
+
+		nrf21540-gpio-if {
+			gpios = <&gpio0 30 0>,
+				<&gpio0 31 0>,
+				<&gpio0 29 0>,
+				<&gpio0 4 0>;
+		};
+	};
+
+	zephyr,user {
+		extled-en-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
+		extled-fault-gpios = <&gpio0 19 GPIO_ACTIVE_LOW>;
+		/* LTC2950 KILL (and INT): driving it low turns the headset off. */
+		power-off-gpios = <&gpio1 10 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>;
+		codec-gpo1-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
+		codec-gpi1-gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+	};
+
+	aliases {
+		led0 = &red_led;
+		led1 = &green_led;
+		led2 = &blue_led;
+		sw0 = &power_button;
+		sw1 = &mute_button;
+		sw2 = &smart_button;
+		led-strip = &led_strip;
+		qdec0 = &qdec1;
+		fuel-gauge0 = &max17048;
+		charge-status = &charge_status;
+		fuel-gauge-alert = &fuel_gauge_alert;
+		qwiic-i2c = &qwiic_i2c;
+		watchdog0 = &wdt0;
+	};
+};
+
+&vregmain {
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
+
+&vregradio {
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
+
+&vregh {
+	status = "okay";
+};
+
+&lfxo {
+	load-capacitors = "internal";
+	load-capacitance-picofarad = <9>;
+};
+
+&hfxo {
+	load-capacitors = "internal";
+	load-capacitance-femtofarad = <13500>;
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-1 = <&uart0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&i2c1 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c1_default>;
+	pinctrl-1 = <&i2c1_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	tac5211: audio-codec@50 {
+		compatible = "ti,tac5211";
+		reg = <0x50>;
+	};
+};
+
+&i2c2 {
+	compatible = "nordic,nrf-twim";
+	status = "okay";
+	pinctrl-0 = <&i2c2_default>;
+	pinctrl-1 = <&i2c2_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	max17048: max17048@36 {
+		compatible = "maxim,max17048";
+		reg = <0x36>;
+	};
+};
+
+&spi3 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi3_default>;
+	pinctrl-1 = <&spi3_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		chain-length = <32>;
+		color-mapping = <LED_COLOR_ID_GREEN
+				 LED_COLOR_ID_RED
+				 LED_COLOR_ID_BLUE>;
+		bits-per-symbol = <5>;
+		spi-one-frame = <0x1c>;
+		spi-zero-frame = <0x10>;
+		reset-delay = <300>;
+	};
+};
+
+&i2s0 {
+	status = "okay";
+	pinctrl-0 = <&i2s0_default>;
+	pinctrl-1 = <&i2s0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&qdec1 {
+	status = "okay";
+	pinctrl-0 = <&qdec1_default>;
+	pinctrl-1 = <&qdec1_sleep>;
+	pinctrl-names = "default", "sleep";
+	steps = <120>;
+	led-pre = <0>;
+};
+
+zephyr_udc0: &usbd {
+	status = "okay";
+};
+
+&gpregret1 {
+	status = "okay";
+
+	boot_mode0: boot_mode@0 {
+		compatible = "zephyr,retention";
+		status = "okay";
+		reg = <0x0 0x1>;
+	};
+};
+
+#include <nordic/nrf5340_cpuapp_partition.dtsi>

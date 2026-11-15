@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+config HW_STACK_PROTECTION
+	default ARCH_HAS_STACK_PROTECTION
+
+if BOARD_R1_NRF5340_CPUAPP
+
+config BT_HCI_IPC
+	default y if BT_HCI
+
+config HEAP_MEM_POOL_ADD_SIZE_BOARD
+	int
+	default 4096 if BT_HCI_IPC
+
+endif # BOARD_R1_NRF5340_CPUAPP
+
+# nRF21540 on the BL5340PA: the MODE pull-down selects POUTA, a fixed 20 dB
+# TX gain. Radio at 0 dBm + 20 dB = 20 dBm at the antenna.
+if BOARD_R1_NRF5340_CPUNET
+
+config MPSL_FEM_NRF21540_TX_GAIN_DB
+	default MPSL_FEM_NRF21540_TX_GAIN_DB_POUTA
+
+config BT_CTLR_TX_PWR_ANTENNA
+	default 20
+
+endif # BOARD_R1_NRF5340_CPUNET

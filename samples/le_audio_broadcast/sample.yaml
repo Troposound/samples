@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: LE Audio broadcast
+  description: LE Audio broadcast source or sink with LC3 and the TAC5211
+common:
+  sysbuild: true
+  build_only: true
+  tags:
+    - bluetooth
+    - audio
+  integration_platforms:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+  platform_allow:
+    - h1/nrf5340/cpuapp
+    - r1/nrf5340/cpuapp
+tests:
+  sample.troposound.le_audio_broadcast.source: {}
+  sample.troposound.le_audio_broadcast.sink:
+    extra_args:
+      - EXTRA_CONF_FILE=sink.conf

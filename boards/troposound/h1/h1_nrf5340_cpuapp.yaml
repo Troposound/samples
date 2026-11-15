@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+identifier: h1/nrf5340/cpuapp
+name: H1-NRF5340-application-MCU
+type: mcu
+arch: arm
+toolchain:
+  - gnuarmemb
+  - zephyr
+ram: 448
+flash: 1024
+supported:
+  - gpio
+  - i2c
+  - i2s
+  - spi
+  - watchdog
+  - usb_device
+  - usbd
+vendor: troposound
