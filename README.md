@@ -17,8 +17,9 @@ west flash --softreset
 
 ## Prebuilt images
 
-`bin/<board>/<sample>.hex` holds every sample built for each board, both
-cores merged. See [bin/README.md](bin/README.md).
+Every sample built for each board, both cores merged, is attached to each
+[release](https://github.com/Troposound/samples/releases). See
+[bin/README.md](bin/README.md).
 
 ## Boards
 

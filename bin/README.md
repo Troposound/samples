@@ -1,7 +1,8 @@
 # Prebuilt images
 
 Every sample built for each board with nRF Connect SDK v3.4.2, application
-and network core merged into one file: `bin/<board>/<sample>.hex`.
+and network core merged into one file: `<board>_<sample>.hex` on the
+[releases](https://github.com/Troposound/samples/releases) page.
 
 | Image | What it is |
 |-------|------------|
@@ -18,8 +19,8 @@ board and `le_audio_broadcast_sink` on the other.
 ## Flash
 
 ```sh
-bin/flash.sh bin/r1/le_audio_broadcast_source.hex 69654557
-bin/flash.sh bin/h1/le_audio_broadcast_sink.hex 69654429
+bin/flash.sh r1_le_audio_broadcast_source.hex <J-Link serial>
+bin/flash.sh h1_le_audio_broadcast_sink.hex <J-Link serial>
 ```
 
 The serial number is the J-Link's and can be left out with one board
