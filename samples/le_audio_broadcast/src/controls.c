@@ -4,11 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Mute button (R1 PTT, H1 mute), headset mode (R1) and, for the sink,
- * volume from the R1 knob or the H1 rotary encoder and the LED strip effect
- * from the H1 smart button.
- */
-
 #include <troposound/headset.h>
 #include <troposound/volume.h>
 #include <zephyr/audio/codec.h>

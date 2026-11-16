@@ -87,9 +87,7 @@
 		};
 	};
 
-	/* Qwiic connector J2, 10k pull-ups on board. No free TWIM instance,
-	 * so it is bit-banged.
-	 */
+	/* Qwiic J2, 10k pull-ups on board; bit-banged, no free TWIM */
 	qwiic_i2c: qwiic-i2c {
 		compatible = "gpio-i2c";
 		status = "okay";
@@ -115,7 +113,7 @@
 	zephyr,user {
 		extled-en-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;
 		extled-fault-gpios = <&gpio0 19 GPIO_ACTIVE_LOW>;
-		/* LTC2950 KILL (and INT): driving it low turns the headset off. */
+		/* LTC2950 KILL/INT: low powers the headset off */
 		power-off-gpios = <&gpio1 10 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>;
 		codec-gpo1-gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>;
 		codec-gpi1-gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>;

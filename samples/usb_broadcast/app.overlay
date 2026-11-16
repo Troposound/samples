@@ -3,9 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * UAC2 speaker: 48 kHz 16-bit stereo OUT only. The audio is consumed at the
- * BIG's pace and there is no IN stream for implicit feedback, so the OUT
- * endpoint is asynchronous with an explicit feedback endpoint.
+ * No IN stream for implicit feedback, so OUT uses an explicit feedback endpoint.
  */
 
 #include <zephyr/dt-bindings/usb/audio.h>

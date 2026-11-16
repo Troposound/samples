@@ -2,12 +2,9 @@
 # Copyright (c) 2026 Troposound
 # SPDX-License-Identifier: Apache-2.0
 #
-# Flash a merged nRF5340 image. nrfutil programs one core per call and
-# rejects addresses of the other core, so the image is split at 0x01000000:
-# network core first (if present), then application core, then reset.
+# nrfutil programs one core per call, so the merged hex is split at 0x01000000
 #
 #   bin/flash.sh <hex> [J-Link serial number]
-#   bin/flash.sh bin/r1/le_audio_broadcast_source.hex 69654557
 
 set -euo pipefail
 

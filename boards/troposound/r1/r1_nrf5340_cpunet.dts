@@ -23,7 +23,7 @@
 		tx-en-gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
 		rx-en-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
 		pdn-gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
-		/* Held inactive (low) by MPSL: ANT1, the on-module PCB antenna. */
+		/* Held low by MPSL: ANT1, on-module PCB antenna */
 		ant-sel-gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
 		supply-voltage-mv = <3300>;
 	};

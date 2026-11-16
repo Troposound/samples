@@ -42,7 +42,7 @@ static void volume_set(int half_db)
 }
 
 #if HAS_KNOB
-/* Audio taper over the knob's travel, in permille of full scale. */
+/* Audio taper over the knob's travel, in permille of full scale */
 static const struct {
 	int16_t permille;
 	int16_t half_db;
@@ -102,7 +102,7 @@ static void knob_poll(void)
 
 	half_db = knob_half_db(DIV_ROUND_CLOSEST(CLAMP(knob_raw, 0, full) * 1000, full));
 
-	/* 1 dB dead band so ADC noise doesn't flip between two steps. */
+	/* 1 dB dead band so ADC noise doesn't flip between two steps */
 	if (volume == INT_MIN || abs(half_db - volume) >= 2) {
 		volume_set(half_db);
 	}

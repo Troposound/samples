@@ -16,7 +16,7 @@ int main(void)
 {
 	int err;
 
-	/* LC3 runs on the app core: use 128 MHz instead of the 64 MHz default. */
+	/* LC3 runs on the app core: use 128 MHz instead of the 64 MHz default */
 	err = nrfx_clock_divider_set(NRF_CLOCK_DOMAIN_HFCLK, NRF_CLOCK_HFCLK_DIV_1);
 	if (err) {
 		LOG_WRN("Could not set 128 MHz (%d)", err);

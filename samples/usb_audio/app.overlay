@@ -3,11 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * UAC2 headset: 48 kHz 16-bit stereo OUT (host -> headphones/speaker) and
- * mono IN (microphone -> host). Both endpoints are asynchronous with
- * implicit feedback: the nRF5340 USBD has a single isochronous IN endpoint,
- * so the mic stream (sized from the I2S clock) paces the host. No Feature
- * Unit: the UAC2 class does not service its control requests.
+ * No Feature Unit: the UAC2 class does not service its control requests.
  */
 
 #include <zephyr/dt-bindings/usb/audio.h>

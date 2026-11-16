@@ -9,15 +9,12 @@
 
 #include <zephyr/device.h>
 
-/* Output volume of `codec` from the R1 volume knob (absolute position) or
- * the H1 rotary encoder (1 dB per detent, starting at initial_half_db).
- * Range -60..+6 dB, in the codec's half-dB steps.
- */
+/* R1 knob or H1 encoder (1 dB/detent) to codec volume; -60..+6 dB in half-dB steps */
 int volume_start(const struct device *codec, int initial_half_db);
 
 typedef void (*volume_set_t)(int half_db);
 
-/* Same controls, reported to `set` instead of a codec. */
+/* As volume_start(), but reports to `set` instead of a codec */
 int volume_start_cb(volume_set_t set, int initial_half_db);
 
 #endif /* TROPOSOUND_VOLUME_H_ */

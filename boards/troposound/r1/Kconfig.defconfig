@@ -15,8 +15,7 @@ config HEAP_MEM_POOL_ADD_SIZE_BOARD
 
 endif # BOARD_R1_NRF5340_CPUAPP
 
-# nRF21540 on the BL5340PA: the MODE pull-down selects POUTA, a fixed 20 dB
-# TX gain. Radio at 0 dBm + 20 dB = 20 dBm at the antenna.
+# nRF21540 MODE is pulled down: fixed POUTA gain of 20 dB
 if BOARD_R1_NRF5340_CPUNET
 
 config MPSL_FEM_NRF21540_TX_GAIN_DB

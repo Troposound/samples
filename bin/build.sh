@@ -2,9 +2,7 @@
 # Copyright (c) 2026 Troposound
 # SPDX-License-Identifier: Apache-2.0
 #
-# Pristine build of every sample for every board into bin/<board>/<sample>.hex
-# (application and network core merged). Run inside the west workspace with
-# the nRF Connect SDK toolchain on PATH.
+# Build all samples for all boards into merged bin/<board>/<sample>.hex
 #
 #   bin/build.sh [build-root]     (default: <west topdir>/build-bin)
 

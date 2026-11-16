@@ -19,7 +19,7 @@ LOG_MODULE_REGISTER(usb_broadcast, LOG_LEVEL_INF);
 static const struct gpio_dt_spec on_led = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
 
 #if DT_NODE_HAS_PROP(USER_NODE, amp_enable_gpios)
-/* Nothing plays locally: keep the R1 speaker amplifier off. */
+/* Nothing plays locally */
 static const struct gpio_dt_spec amp_en = GPIO_DT_SPEC_GET(USER_NODE, amp_enable_gpios);
 #endif
 
@@ -31,7 +31,7 @@ int main(void)
 	(void)gpio_pin_configure_dt(&amp_en, GPIO_OUTPUT_INACTIVE);
 #endif
 
-	/* LC3 runs on the app core: use 128 MHz instead of the 64 MHz default. */
+	/* LC3 encoding needs 128 MHz */
 	err = nrfx_clock_divider_set(NRF_CLOCK_DOMAIN_HFCLK, NRF_CLOCK_HFCLK_DIV_1);
 	if (err) {
 		LOG_WRN("Could not set 128 MHz (%d)", err);
@@ -45,7 +45,7 @@ int main(void)
 		return err;
 	}
 
-	/* The H1 encoder starts at unity gain; the R1 knob sets it from its position. */
+	/* Encoder only; the R1 knob reports its position */
 	err = volume_start_cb(usb_volume_set, 0);
 	if (err) {
 		return err;

@@ -52,7 +52,7 @@ int led_init(void)
 	return 0;
 }
 
-/* Red + green = yellow: streaming while muted. */
+/* Red + green = yellow: streaming while muted */
 static void red_green_update(void)
 {
 	bool streaming = cur_state == LED_STATE_STREAMING;

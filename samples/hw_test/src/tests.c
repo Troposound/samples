@@ -33,8 +33,6 @@
 #define GAUGE_NODE   DT_ALIAS(fuel_gauge0)
 #define PROMPT_TIME  K_SECONDS(10)
 
-/* ---- LEDs ------------------------------------------------------------- */
-
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
 	GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
@@ -70,8 +68,6 @@ static enum result test_leds(void)
 	note("visual: red, green, blue, white shown");
 	return PASS;
 }
-
-/* ---- Clocks ----------------------------------------------------------- */
 
 static enum result test_clocks(void)
 {
@@ -112,8 +108,6 @@ static enum result test_clocks(void)
 	return PASS;
 }
 
-/* ---- I2C devices ------------------------------------------------------ */
-
 #define MAX17048_REG_VERSION 0x08
 
 static enum result test_i2c(void)
@@ -150,8 +144,6 @@ static enum result test_i2c(void)
 	return r;
 }
 
-/* ---- Fuel gauge ------------------------------------------------------- */
-
 static enum result test_fuel_gauge(void)
 {
 	const struct device *gauge = DEVICE_DT_GET(GAUGE_NODE);
@@ -177,8 +169,6 @@ static enum result test_fuel_gauge(void)
 
 	return PASS;
 }
-
-/* ---- Audio: I2S + TAC5211 + mic + speaker ---------------------------- */
 
 static enum result test_audio(void)
 {
@@ -214,9 +204,7 @@ static enum result test_audio(void)
 		return FAIL;
 	}
 
-	/* The tone reaching the mic through the air proves DAC, amp, speaker
-	 * and mic together. A headset's ear cups may keep it from the mic.
-	 */
+	/* Acoustic path; headset ear cups may keep the tone from the mic */
 	rise = (loud.tone_dbfs_x10 - quiet.tone_dbfs_x10) / 10;
 	note("mic %d dBFS; 1 kHz at mic %d -> %d dBFS (%+d dB) with tone; late %u",
 	     quiet.rms_dbfs_x10 / 10, quiet.tone_dbfs_x10 / 10, loud.tone_dbfs_x10 / 10, rise,
@@ -229,8 +217,6 @@ static enum result test_audio(void)
 
 	return late ? WARN : PASS;
 }
-
-/* ---- TAC5211 GPO1 / GPI1 lines to the MCU ----------------------------- */
 
 #define TAC5211_REG_PAGE        0x00
 #define TAC5211_REG_GPO1_CFG0   0x0C
@@ -260,7 +246,7 @@ static enum result test_codec_gpio(void)
 		return FAIL;
 	}
 
-	/* Codec drives GPO1; read it with the pull against the driven level. */
+	/* Pull against the driven level so an open line reads wrong */
 	for (int level = 0; level <= 1; level++) {
 		err = i2c_reg_update_byte_dt(&codec, TAC5211_REG_GPO_GPI_VAL, TAC5211_GPO1_VAL,
 					     level ? TAC5211_GPO1_VAL : 0);
@@ -269,7 +255,6 @@ static enum result test_codec_gpio(void)
 		gpo_seen[level] = err ? -1 : gpio_pin_get_dt(&gpo1);
 	}
 
-	/* MCU drives GPI1, codec reads it back. */
 	for (int level = 0; level <= 1; level++) {
 		gpio_pin_configure_dt(&gpi1, level ? GPIO_OUTPUT_ACTIVE : GPIO_OUTPUT_INACTIVE);
 		k_msleep(2);
@@ -277,7 +262,6 @@ static enum result test_codec_gpio(void)
 		gpi_seen[level] = err ? -1 : !!(val & TAC5211_GPI1_MON);
 	}
 
-	/* Back to reset state: both codec pins disabled, MCU pins inputs. */
 	(void)i2c_reg_write_byte_dt(&codec, TAC5211_REG_GPO1_CFG0, 0);
 	(void)i2c_reg_write_byte_dt(&codec, TAC5211_REG_GPI_CFG, 0);
 	(void)i2c_reg_update_byte_dt(&codec, TAC5211_REG_GPO_GPI_VAL, TAC5211_GPO1_VAL, 0);
@@ -292,8 +276,6 @@ static enum result test_codec_gpio(void)
 		       ? PASS
 		       : FAIL;
 }
-
-/* ---- USB: VBUS and enumeration by the host ---------------------------- */
 
 USBD_DEVICE_DEFINE(hw_usbd, DEVICE_DT_GET(DT_NODELABEL(zephyr_udc0)), 0x1915, 0x5310);
 USBD_DESC_LANG_DEFINE(usb_lang);
@@ -330,7 +312,7 @@ static int usb_init_once(void)
 	ret = ret ? ret : usbd_msg_register_cb(&hw_usbd, usb_msg_cb);
 	ret = ret ? ret : usbd_init(&hw_usbd);
 	if (ret == 0 && nrf_usbreg_status_get(NRF_USBREGULATOR) & NRF_USBREG_STATUS_VBUSDETECT_MASK) {
-		/* VBUS was already there before the callback was registered. */
+		/* VBUS was present before the callback was registered */
 		(void)usbd_enable(&hw_usbd);
 	}
 
@@ -362,8 +344,6 @@ static enum result test_usb(void)
 	note("VBUS ok, enumerated and configured by the host");
 	return PASS;
 }
-
-/* ---- Buttons (every gpio-keys child of /buttons) ---------------------- */
 
 struct button {
 	uint16_t code;
@@ -401,8 +381,6 @@ static enum result test_buttons(void)
 
 	return r;
 }
-
-/* ---- R1: volume pot --------------------------------------------------- */
 
 #if DT_NODE_HAS_PROP(USER_NODE, io_channels)
 static enum result test_pot(void)
@@ -442,8 +420,6 @@ static enum result test_pot(void)
 	return (hi - lo > full * 7 / 10) ? PASS : FAIL;
 }
 #endif
-
-/* ---- Jack detect and gauge alert -------------------------------------- */
 
 #if DT_NODE_EXISTS(DT_ALIAS(jack_detect))
 static enum result test_switch(const struct gpio_dt_spec *pin, const char *what,
@@ -496,8 +472,6 @@ static enum result test_gauge_alert(void)
 }
 #endif
 
-/* ---- H1: rotary encoder ----------------------------------------------- */
-
 #if DT_NODE_EXISTS(DT_ALIAS(qdec0))
 static enum result test_encoder(void)
 {
@@ -526,8 +500,6 @@ static enum result test_encoder(void)
 }
 #endif
 
-/* ---- H1: WS2812 strip ------------------------------------------------- */
-
 #if DT_NODE_EXISTS(DT_ALIAS(led_strip))
 #define STRIP_NODE     DT_ALIAS(led_strip)
 #define STRIP_LEN      DT_PROP(STRIP_NODE, chain_length)
@@ -538,9 +510,7 @@ static enum result test_encoder(void)
 
 static uint8_t strip_frame[FRAME_BYTES];
 
-/* Same raw-SPI encoding as the blinky sample: each colour bit becomes one
- * SYMBOL_BITS-wide SPI symbol.
- */
+/* Same raw-SPI encoding as the blinky sample */
 static int strip_fill(const struct spi_dt_spec *spi, uint8_t r, uint8_t g, uint8_t b)
 {
 	const uint8_t grb[3] = { g, r, b };
@@ -610,8 +580,6 @@ static enum result test_led_strip(void)
 }
 #endif
 
-/* ---- H1: Qwiic connector (bit-banged I2C) ----------------------------- */
-
 #if DT_NODE_EXISTS(DT_ALIAS(qwiic_i2c))
 #define QWIIC_NODE DT_ALIAS(qwiic_i2c)
 
@@ -628,7 +596,7 @@ static enum result test_qwiic(void)
 		return FAIL;
 	}
 
-	/* Idle bus: the on-board 10k pull-ups hold both lines high. */
+	/* On-board 10k pull-ups hold an idle bus high */
 	if (gpio_pin_get_dt(&scl) != 1 || gpio_pin_get_dt(&sda) != 1) {
 		note("bus not idle high: SCL %d SDA %d (pull-ups, short?)",
 		     gpio_pin_get_dt(&scl), gpio_pin_get_dt(&sda));
@@ -656,8 +624,6 @@ static enum result test_qwiic(void)
 }
 #endif
 
-/* ---- H1: power off through the LTC2950 -------------------------------- */
-
 #if DT_NODE_HAS_PROP(USER_NODE, power_off_gpios)
 static enum result test_power_off(void)
 {
@@ -679,8 +645,6 @@ static enum result test_power_off(void)
 	return WARN;
 }
 #endif
-
-/* ---- Test table ------------------------------------------------------- */
 
 const struct hw_test hw_tests[] = {
 	{ "leds", "RGB status LED", test_leds },

@@ -67,8 +67,6 @@ config BROADCAST_LED_STRIP
 	  its chain-length. The smart button cycles blue bass bloom, VU meter,
 	  spectrum, beat strobe, beat ripples and off.
 
-# Role-dependent defaults for the host stack. Defaults listed here take
-# precedence over the ones in Kconfig.zephyr below.
 config AUDIO
 	default y
 

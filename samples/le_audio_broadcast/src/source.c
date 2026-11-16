@@ -4,9 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* LE Audio broadcast source: TAC5211 mic (left I2S slot, 48 kHz) -> LC3 mono 10 ms ->
- * one BIS, advertised as a Public Broadcast (PBP) with a Broadcast_Name.
- */
+/* TAC5211 mic (left I2S slot, 48 kHz) -> LC3 mono 10 ms -> one PBP BIS */
 
 #include <string.h>
 
@@ -37,7 +35,7 @@ BUILD_ASSERT(IN_RANGE(sizeof(CONFIG_BROADCAST_NAME) - 1, BT_AUDIO_BROADCAST_NAME
 
 #define PCM_RATE_HZ      48000
 #define FRAME_US         10000
-#define FRAME_SAMPLES    (PCM_RATE_HZ / 100) /* 480 stereo frames per 10 ms at 48 kHz */
+#define FRAME_SAMPLES    (PCM_RATE_HZ / 100)
 #define TX_BUF_COUNT     CONFIG_BT_ISO_TX_BUF_COUNT
 #define PCM_BLOCK_COUNT  4
 
@@ -66,14 +64,14 @@ static uint16_t seq_num;
 static lc3_encoder_mem_48k_t lc3_mem;
 static lc3_encoder_t lc3_enc;
 
-/* Interleaved stereo 16-bit PCM blocks; the encoder reads the left slot. */
+/* Interleaved stereo 16-bit PCM blocks; the encoder reads the left slot */
 static uint32_t pcm_blocks[PCM_BLOCK_COUNT][FRAME_SAMPLES];
 K_MSGQ_DEFINE(pcm_q, sizeof(uint32_t *), PCM_BLOCK_COUNT, sizeof(uint32_t *));
 
 static K_SEM_DEFINE(sem_started, 0, 1);
 
 static uint32_t tx_silence[FRAME_SAMPLES]; /* EasyDMA reads RAM only */
-static const uint32_t mute_silence[FRAME_SAMPLES]; /* encoded while muted */
+static const uint32_t mute_silence[FRAME_SAMPLES];
 static size_t next_rx;
 
 static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
@@ -81,7 +79,7 @@ static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 	ARG_UNUSED(released_tx);
 
 	if (released_rx != NULL) {
-		/* Full: drop the block, the encoder is behind. */
+		/* Full: drop the block, the encoder is behind */
 		(void)k_msgq_put(&pcm_q, &released_rx, K_NO_WAIT);
 	}
 
@@ -118,7 +116,7 @@ static int audio_in_start(void)
 
 	audio_i2s_callback_set(i2s_cb);
 
-	/* First pair goes to start(), the second is queued from the first callback. */
+	/* First pair goes to start(), the second is queued from the first callback */
 	next_rx = 1;
 	err = audio_i2s_start(tx_silence, pcm_blocks[0]);
 	if (err) {
@@ -126,7 +124,7 @@ static int audio_in_start(void)
 		return err;
 	}
 
-	/* Codec auto-detects its clocks from BCLK/FSYNC, so configure after start. */
+	/* Codec auto-detects its clocks from BCLK/FSYNC, so configure after start */
 	err = audio_codec_configure(codec, &cfg);
 	if (err) {
 		LOG_ERR("TAC5211 configure failed (%d)", err);
@@ -153,10 +151,9 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 			continue;
 		}
 
-		/* Muted: keep the stream running, send silence. */
 		const uint32_t *pcm = controls_muted() ? mute_silence : block;
 
-		/* stride 2 = left slot of each stereo word (mic is on ADC channel 1) */
+		/* Stride 2: left slot, mic is on ADC channel 1 */
 		headset_mic_gain((int16_t *)block, FRAME_SAMPLES, 2);
 
 		if (lc3_encode(lc3_enc, LC3_PCM_FORMAT_S16, (const int16_t *)pcm, 2, octets,
@@ -168,7 +165,7 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 		struct net_buf *buf = net_buf_alloc(&tx_pool, K_NO_WAIT);
 
 		if (buf == NULL) {
-			/* Controller queue full: I2S clock ran ahead of the ISO clock. */
+			/* Controller queue full: I2S clock ran ahead of the ISO clock */
 			dropped++;
 			continue;
 		}
@@ -273,12 +270,10 @@ static int start_advertising(void)
 	}
 	broadcast_id &= BIT_MASK(24);
 
-	/* Broadcast Audio Announcement (BAP) */
 	net_buf_simple_add_le16(&id_buf, BT_UUID_BROADCAST_AUDIO_VAL);
 	net_buf_simple_add_le24(&id_buf, broadcast_id);
 	ext_ad[0] = (struct bt_data)BT_DATA(BT_DATA_SVC_DATA16, id_buf.data, id_buf.len);
 
-	/* Public Broadcast Announcement (PBP), no extra metadata */
 	err = bt_pbp_get_announcement(NULL, 0, PBP_FEATURES, &pba_buf);
 	if (err) {
 		LOG_ERR("PBP announcement failed (%d)", err);

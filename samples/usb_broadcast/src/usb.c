@@ -5,16 +5,8 @@
  */
 
 /*
- * USB Audio Class 2 speaker: 48 kHz 16-bit stereo OUT, scaled by the volume
- * control into a ring that the LC3 encoders drain one 10 ms frame per BIG
- * event.
- *
- * The BIG clocks the audio out, so the explicit feedback steers the host to
- * its rate: the ring level right after each frame is taken (the low point of
- * the sawtooth) is held at FB_TARGET.
- *
- * The ring is single-producer/single-consumer: the USB stack thread writes,
- * the encoder thread reads.
+ * The BIG clocks the audio out. Explicit feedback holds the ring level right
+ * after each frame is taken (the sawtooth low point) at FB_TARGET.
  */
 
 #include <math.h>
@@ -38,10 +30,10 @@ LOG_MODULE_REGISTER(usb, LOG_LEVEL_INF);
 
 #define FRAMES_PER_MS      (PCM_RATE_HZ / 1000)
 #define STEREO_FRAME_BYTES (2 * sizeof(int16_t))
-/* Async full-speed: up to one extra frame per USB frame. */
+/* Async: up to one extra frame per USB frame */
 #define RECV_MAX_BYTES     ((FRAMES_PER_MS + 1) * STEREO_FRAME_BYTES)
 
-/* Power of two; counters run free and wrap naturally. */
+/* Must be a power of two, counters run free */
 #define RING_FRAMES 2048U
 
 /* Q10.14 samples per USB frame. One LSB is 1.27 ppm. */
@@ -58,10 +50,10 @@ LOG_MODULE_REGISTER(usb, LOG_LEVEL_INF);
 
 BUILD_ASSERT(FRAME_SAMPLES + FB_TARGET < RING_FRAMES / 2, "Ring too small");
 
-/* One word per stereo frame, left in the low half-word as on the wire. */
+/* Left in the low half-word, as on the wire */
 static uint32_t ring[RING_FRAMES];
-static atomic_t ring_head; /* written by USB */
-static atomic_t ring_tail; /* written by the encoder */
+static atomic_t ring_head;
+static atomic_t ring_tail;
 
 static atomic_t stream_on;
 static atomic_t gain_q14 = ATOMIC_INIT(GAIN_UNITY);
@@ -92,8 +84,6 @@ void usb_volume_set(int half_db)
 	atomic_set(&gain_q14, lroundf(GAIN_UNITY * powf(10.0f, half_db / 40.0f)));
 }
 
-/* ---- Encoder side ---- */
-
 void usb_frame_get(uint32_t *pcm)
 {
 	uint32_t head = (uint32_t)atomic_get(&ring_head);
@@ -101,7 +91,7 @@ void usb_frame_get(uint32_t *pcm)
 	uint32_t avail = head - tail;
 
 	if (!atomic_get(&stream_on)) {
-		/* Consumer-side flush, so the next stream starts empty. */
+		/* Consumer-side flush */
 		atomic_set(&ring_tail, head);
 		primed = false;
 	} else if (!primed && avail >= FRAME_SAMPLES + FB_TARGET) {
@@ -128,8 +118,6 @@ void usb_frame_get(uint32_t *pcm)
 	}
 	atomic_set(&trough, settle > 0 ? -1 : (atomic_val_t)(avail - FRAME_SAMPLES));
 }
-
-/* ---- USB side (USBD thread) ---- */
 
 static void sof_cb(const struct device *dev, void *user_data)
 {
@@ -223,7 +211,7 @@ static uint32_t feedback_cb(const struct device *dev, uint8_t terminal, void *us
 
 	err_acc += (fill - FB_TARGET) - (err_acc >> FB_EWMA_SHIFT);
 
-	/* Above target the host is ahead of the BIG, so ask it for less. */
+	/* Above target the host is ahead of the BIG */
 	dev_lsb = CLAMP(-(err_acc >> FB_EWMA_SHIFT) * FB_GAIN, -FB_MAX_DEV, FB_MAX_DEV);
 	atomic_set(&fb_dev, dev_lsb);
 
@@ -285,7 +273,7 @@ int usb_start(void)
 		return ret;
 	}
 
-	/* UAC2 uses an Interface Association Descriptor. */
+	/* IAD device class */
 	usbd_device_set_code_triple(&usbd_ctx, USBD_SPEED_FS, USB_BCC_MISCELLANEOUS, 0x02, 0x01);
 
 	ret = usbd_msg_register_cb(&usbd_ctx, usbd_msg_cb);

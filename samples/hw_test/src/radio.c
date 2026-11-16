@@ -15,9 +15,7 @@
 #define SCAN_MS  4000
 #define MAX_SEEN 32
 
-/* Fastest legacy advertising (20 ms) plus a scan window that never closes:
- * the nRF21540 switches between PA and LNA all the time, like a stream.
- */
+/* 20 ms advertising + 100% scan duty keeps the nRF21540 toggling PA/LNA */
 #define BUSY_ADV_PARAM  BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_IDENTITY, 0x0020, 0x0020, NULL)
 #define BUSY_SCAN_PARAM BT_LE_SCAN_PARAM(BT_LE_SCAN_TYPE_PASSIVE, BT_LE_SCAN_OPT_NONE, 0x0010, 0x0010)
 
@@ -96,9 +94,6 @@ int radio_busy(void)
 	return bt_le_scan_start(BUSY_SCAN_PARAM, scan_cb);
 }
 
-/* Proves the net core boots, IPC works and the radio (through the nRF21540)
- * both receives (scan) and transmits (advertising, check with a phone).
- */
 enum result test_radio(void)
 {
 	int err;
@@ -136,11 +131,10 @@ enum result test_radio(void)
 	return PASS;
 }
 
-/* FEM at 20 dBm coupling into the mic/amp: measure, then listen. */
-#define RF_LOOP_VOLUME (-40) /* -20 dB: avoids acoustic feedback on R1 */
+#define RF_LOOP_VOLUME (-40) /* -20 dB, avoids acoustic feedback on R1 */
 #define RF_LISTEN_TIME K_SECONDS(15)
 
-/* Tenths of a dB as "-12.3"; works for -0.x too. */
+/* Handles -0.x, which plain %d.%d would lose the sign of */
 static const char *db(int x10, char buf[16])
 {
 	snprintf(buf, 16, "%s%d.%d", x10 < 0 ? "-" : "", abs(x10) / 10, abs(x10) % 10);
@@ -184,7 +178,7 @@ enum result test_rf_audio(void)
 	}
 	hw_audio_measure(2000, &busy);
 
-	/* Idle again: use the quieter idle window so drift can't hide noise. */
+	/* Quieter idle window, so drift can't hide RF noise */
 	radio_idle();
 	hw_audio_measure(2000, &quiet2);
 	quiet.rms_dbfs_x10 = MIN(quiet.rms_dbfs_x10, quiet2.rms_dbfs_x10);

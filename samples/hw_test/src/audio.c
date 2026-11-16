@@ -36,7 +36,7 @@ static float goertzel_coeff;
 static atomic_t mode = ATOMIC_INIT(AUDIO_SILENT);
 static bool running;
 
-/* Measurement accumulators, written by the I2S ISR. */
+/* Written from the I2S ISR */
 static struct k_spinlock lock;
 static uint32_t acc_blocks;
 static uint32_t acc_peak;
@@ -49,9 +49,7 @@ static int16_t sat16(int32_t v)
 	return (int16_t)CLAMP(v, INT16_MIN, INT16_MAX);
 }
 
-/* Mic is on one slot, the other is silent: the sum catches it wherever the
- * codec puts ADC channel 1.
- */
+/* Mic is on one slot, the other is silent; summing covers either */
 static int16_t mic_sample(uint32_t word)
 {
 	return sat16((int16_t)(word & 0xFFFF) + (int16_t)(word >> 16));
@@ -104,14 +102,13 @@ static void fill_block(uint32_t *tx, const uint32_t *rx)
 	}
 }
 
-/* ISR: measure the pair the DMA just released, refill it and queue it again. */
 static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 {
 	uint32_t *tx = (uint32_t *)released_tx;
 	uint32_t *rx = released_rx;
 
 	if (rx == NULL || tx == NULL) {
-		/* First request after start: hand over the second pair. */
+		/* First request after start */
 		tx = tx_buf[1];
 		rx = rx_buf[1];
 		fill_block(tx, NULL);
@@ -166,7 +163,7 @@ int hw_audio_start(int volume_half_db)
 		return err;
 	}
 
-	/* BCLK runs before the codec is configured so its PLL can lock. */
+	/* Codec PLL locks to BCLK, so start I2S first */
 	err = audio_codec_configure(codec, &cfg);
 	if (err == 0) {
 		err = audio_codec_set_property(codec, AUDIO_PROPERTY_OUTPUT_VOLUME,
@@ -183,9 +180,7 @@ int hw_audio_start(int volume_half_db)
 
 	(void)audio_i2s_late_count_reset();
 	running = true;
-	/* The ADC high-pass needs about a second at +30 dB gain before the
-	 * noise floor is real; earlier windows read the settling transient.
-	 */
+	/* ADC high-pass settles in about 1 s at +30 dB gain */
 	k_msleep(1200);
 
 	return 0;
@@ -225,7 +220,7 @@ void hw_audio_measure(int ms, struct audio_level *out)
 	k_spinlock_key_t key;
 	uint32_t blocks;
 
-	k_msleep(50); /* skip the block in flight when the mode changed */
+	k_msleep(50); /* skip the block in flight */
 
 	key = k_spin_lock(&lock);
 	acc_blocks = 0U;
@@ -247,9 +242,7 @@ void hw_audio_measure(int ms, struct audio_level *out)
 		double tone_power = acc_tone_power / blocks;
 
 		out->rms_dbfs_x10 = to_dbfs_x10(sqrt(acc_energy / n));
-		/* Goertzel power of a sine with amplitude A is (A * N / 2)^2;
-		 * report it as an RMS level so it compares with rms_dbfs.
-		 */
+		/* Goertzel power is (A * N / 2)^2; convert to RMS */
 		out->tone_dbfs_x10 = to_dbfs_x10(2.0 * sqrt(MAX(tone_power, 0.0)) /
 						 AUDIO_I2S_BLOCK_WORDS / sqrt(2.0));
 	} else {

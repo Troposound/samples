@@ -26,12 +26,10 @@ enum tac5211_playback_eq_preset {
 	TAC5211_PLAYBACK_EQ_PRESET_BASS_BOOST,
 };
 
-/* Speaker EQ (selected preset) or allpass. May be called before
- * audio_codec_configure().
- */
+/* Speaker EQ or allpass. May be called before audio_codec_configure(). */
 int tac5211_playback_eq_enable(const struct device *dev, bool enable);
 
-/* Speaker voicing, applied while the speaker EQ is enabled. */
+/* Speaker voicing, applied while the speaker EQ is enabled */
 int tac5211_playback_eq_preset_set(const struct device *dev,
 				   enum tac5211_playback_eq_preset preset);
 

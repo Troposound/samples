@@ -1,8 +1,7 @@
 # Copyright (c) 2026 Troposound
 # SPDX-License-Identifier: Apache-2.0
 
-# Net core runs ipc_radio (HCI over IPC + SoftDevice Controller with ISO),
-# configured by sysbuild/ipc_radio/prj.conf.
+# Net core image, see sysbuild/ipc_radio/prj.conf
 config NRF_DEFAULT_IPC_RADIO
 	default y
 

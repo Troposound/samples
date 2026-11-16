@@ -17,7 +17,7 @@
 
 #if DT_NODE_EXISTS(DT_ALIAS(charge_status))
 
-/* The debugger connector disables charging; the charge LED tests it without. */
+/* Charging is disabled while the debugger connector is plugged in */
 
 #define GAUGE_NODE DT_ALIAS(fuel_gauge0)
 
@@ -29,9 +29,7 @@
 #define USB_WAIT_TIME    K_SECONDS(10)
 #define CHARGE_SETTLE_MS 3000 /* charger soft start plus gauge samples */
 #define CHARGE_RISE_MV   15   /* charge current x cell resistance, minimum */
-/* Plugging USB in starts a new BQ24075 charge cycle unless the cell is
- * above the recharge threshold (4.2 V - ~100 mV). Below this it should charge.
- */
+/* Below the BQ24075 recharge threshold (4.2 V - ~100 mV) */
 #define BATT_LOW_MV      4050
 
 struct batt {
@@ -58,10 +56,7 @@ static int gauge_read(uint8_t reg, uint16_t *val)
 	return 0;
 }
 
-/* In hibernate (default after a few quiet minutes) the gauge samples VCELL
- * only every 45 s. HIBRT = 0 keeps it active, sampling every 250 ms. The
- * gauge keeps this until it loses power.
- */
+/* Hibernate samples VCELL every 45 s; active mode every 250 ms */
 static int gauge_hibernate_off(void)
 {
 	uint8_t buf[2] = { 0 };
@@ -109,7 +104,6 @@ static int batt_read(struct batt *b)
 	b->vbus = vbus_present();
 	b->charging = gpio_pin_get_dt(&chg_pin) == 1;
 
-	/* Average four fresh samples. */
 	for (int i = 0; i < 4; i++) {
 		int mv;
 
@@ -153,7 +147,7 @@ static bool usb_wait_change(bool from)
 	return false;
 }
 
-/* A charge current shows as a cell voltage step when the charger starts. */
+/* Charge current shows as a VCELL step when the charger starts */
 enum result test_charging(void)
 {
 	struct batt s[3];
@@ -167,7 +161,6 @@ enum result test_charging(void)
 	}
 	batt_print("now", &s[0]);
 
-	/* Toggle USB twice: out and back in (or in and back out). */
 	while (n < ARRAY_SIZE(s)) {
 		bool from = s[n - 1].vbus;
 
@@ -195,10 +188,9 @@ enum result test_charging(void)
 		}
 	}
 
-	/* Voltage step at the plug-in edge, if the charger started. */
 	for (size_t i = 1; i < n; i++) {
 		if (!s[i].vbus || !s[i].charging) {
-			continue; /* unplug edge, or charger off: nothing flows */
+			continue;
 		}
 		rise = s[i].mv - s[i - 1].mv;
 		if (rise < CHARGE_RISE_MV) {
@@ -245,20 +237,18 @@ void hw_battery_monitor(int seconds)
 			break;
 		}
 		batt_print("", &b);
-		/* batt_read() already took 1 s */
+		/* batt_read() takes 1 s */
 	}
 }
 
-/* ---- Charge LED (patterns: README) ----------------------------------- */
-
-/* R1's charger drives its own charge LED. */
+/* R1's charger drives its own charge LED */
 #define HW_CHARGE_LED IS_ENABLED(CONFIG_BOARD_R1)
 
 #define TICK_MS      250
 #define SETTLE_TICKS (CHARGE_SETTLE_MS / TICK_MS)
 
 enum ind {
-	IND_NONE, /* LED belongs to the tests / summary */
+	IND_NONE, /* LED owned by the tests */
 	IND_BATTERY,
 	IND_SETTLING,
 	IND_CHARGING,
@@ -335,7 +325,7 @@ static void charge_led_thread(void *p1, void *p2, void *p3)
 		bool chg_now;
 		int v;
 
-		/* A test run owns the LED and the USB cable. */
+		/* Tests own the LED and the USB cable */
 		if (k_mutex_lock(&hw_run_lock, K_NO_WAIT) != 0) {
 			ind = IND_NONE;
 			paused = true;
@@ -351,7 +341,6 @@ static void charge_led_thread(void *p1, void *p2, void *p3)
 		k_mutex_unlock(&hw_run_lock);
 
 		if (paused) {
-			/* Edges made during the run don't count. */
 			paused = false;
 			vbus = vbus_now;
 			chg = chg_now;
@@ -370,7 +359,6 @@ static void charge_led_thread(void *p1, void *p2, void *p3)
 			ind = IND_FAULT;
 			printk("charge LED: /CHG active without USB -> FAULT\n");
 		} else if (chg_now && !chg) {
-			/* Charger started: compare against the samples before it. */
 			base_mv = before;
 			settle = SETTLE_TICKS;
 			ind = IND_SETTLING;

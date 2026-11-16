@@ -4,13 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* LE Audio broadcast source: USB stereo -> LC3 48 kHz 10 ms (BAP 48_4_1) per
- * channel -> two BISes, front left and front right, advertised as a high
- * quality Public Broadcast (PBP).
- *
- * TX_IN_FLIGHT frame pairs sit in the controller; each left SDU sent
- * releases the next pair, so the encoders run on the BIG clock.
- */
+/* Each sent left SDU releases the next frame pair, so encoding runs on the BIG clock */
 
 #include <lc3.h>
 #include <zephyr/bluetooth/audio/audio.h>
@@ -83,7 +77,6 @@ static int frame_send(void)
 
 	for (size_t ch = 0; ch < CHANNELS && ret == 0; ch++) {
 		net_buf_reserve(bufs[ch], BT_ISO_CHAN_SEND_RESERVE);
-		/* Stride 2 picks one channel out of the interleaved pairs. */
 		if (lc3_encode(lc3_enc[ch], LC3_PCM_FORMAT_S16, (const int16_t *)pcm + ch, 2,
 			       octets, net_buf_add(bufs[ch], octets)) != 0) {
 			ret = -EIO;
@@ -122,7 +115,7 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 	uint32_t errors = 0;
 
 	while (true) {
-		/* Woken per sent pair; the timeout retries after a failed send. */
+		/* Timeout retries after a failed send */
 		(void)k_sem_take(&sem_tx, K_MSEC(FRAME_MS));
 
 		while (atomic_get(&streaming) && atomic_get(&in_flight) < TX_IN_FLIGHT) {
@@ -138,7 +131,7 @@ static void encoder_thread(void *p1, void *p2, void *p3)
 	}
 }
 
-/* Below the Bluetooth threads, so encoding never holds up HCI traffic. */
+/* Below the Bluetooth threads */
 K_THREAD_DEFINE(encoder_tid, 6144, encoder_thread, NULL, NULL, NULL, 10, 0, 0);
 
 static void stream_started_cb(struct bt_bap_stream *s)
@@ -232,12 +225,10 @@ static int start_advertising(void)
 	}
 	broadcast_id &= BIT_MASK(24);
 
-	/* Broadcast Audio Announcement (BAP) */
 	net_buf_simple_add_le16(&id_buf, BT_UUID_BROADCAST_AUDIO_VAL);
 	net_buf_simple_add_le24(&id_buf, broadcast_id);
 	ext_ad[0] = (struct bt_data)BT_DATA(BT_DATA_SVC_DATA16, id_buf.data, id_buf.len);
 
-	/* Public Broadcast Announcement (PBP), no extra metadata */
 	err = bt_pbp_get_announcement(NULL, 0, BT_PBP_ANNOUNCEMENT_FEATURE_HIGH_QUALITY, &pba_buf);
 	if (err) {
 		LOG_ERR("PBP announcement failed (%d)", err);

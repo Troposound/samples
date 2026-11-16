@@ -53,7 +53,7 @@ void headset_speaker_set(bool on)
 #if HAS_JACK
 static const struct gpio_dt_spec jack = GPIO_DT_SPEC_GET(JACK_NODE, gpios);
 
-/* Linear to -9 dBFS, 1:4 above, ceiling at -1 dBFS. */
+/* Linear to -9 dBFS, 1:4 above, ceiling at -1 dBFS */
 #define CLIP_KNEE  11627
 #define CLIP_CEIL  29205
 #define CLIP_SLOPE 4
@@ -137,7 +137,7 @@ int headset_start(const struct device *dev)
 #if HAS_JACK
 	mic_gain_q8 = lroundf(256.0f * powf(10.0f, CONFIG_TROPOSOUND_HEADSET_MIC_GAIN_DB / 20.0f));
 
-	/* gpio-keys only reports changes. */
+	/* gpio-keys only reports changes */
 	jack_set(gpio_pin_get_dt(&jack) == 1);
 #endif
 

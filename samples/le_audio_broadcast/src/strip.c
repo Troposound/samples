@@ -30,7 +30,7 @@ LOG_MODULE_REGISTER(strip, LOG_LEVEL_INF);
 #define SYMBOL_BITS DT_PROP(STRIP_NODE, bits_per_symbol)
 #define SYMBOL_ONE  DT_PROP(STRIP_NODE, spi_one_frame)
 #define SYMBOL_ZERO DT_PROP(STRIP_NODE, spi_zero_frame)
-/* Lead with the reset: the SPIM drives the first bit early and would stretch it. */
+/* Lead with the reset: the SPIM drives the first bit early and would stretch it */
 #define RESET_BYTES DIV_ROUND_UP(DT_PROP(STRIP_NODE, reset_delay) * (SPI_HZ / 1000000), 8)
 #define TX_BYTES    (RESET_BYTES + DIV_ROUND_UP(STRIP_LEN * 24 * SYMBOL_BITS, 8) + 1)
 
@@ -160,8 +160,6 @@ static uint32_t rnd(void)
 	state ^= state << 5;
 	return state;
 }
-
-/* --- Analysis ------------------------------------------------------------ */
 
 static void bank_init(void)
 {
@@ -336,8 +334,6 @@ static void analyse(const uint32_t *pcm)
 
 	beat_detect(bass_db, silent);
 }
-
-/* --- Effects ------------------------------------------------------------- */
 
 static struct led_rgb hsv(uint8_t h, uint8_t v)
 {
@@ -547,8 +543,6 @@ static const char *const mode_names[] = {
 	[MODE_RIPPLES] = "beat ripples",
 	[MODE_OFF] = "off",
 };
-
-/* --- Output -------------------------------------------------------------- */
 
 static uint8_t channel(const struct led_rgb *p, uint8_t id)
 {

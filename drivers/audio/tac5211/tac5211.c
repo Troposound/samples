@@ -1,10 +1,5 @@
 #define DT_DRV_COMPAT ti_tac5211
 
-/* ponytail: out-of-tree codec driver parked in the sample; its binding already lives
- * in dts/bindings/audio/ti,tac5211.yaml. Move to a top-level drivers/audio/ module if
- * a second application ever needs it.
- */
-
 #include <troposound/tac5211.h>
 #include "tac5211_regs.h"
 
@@ -51,9 +46,6 @@ LOG_MODULE_REGISTER(tac5211, CONFIG_TAC5211_LOG_LEVEL);
 #define TAC5211_PLAYBACK_VOLUME_DEFAULT_REG                                                        \
 	(TAC5211_DAC_DVOL_0_DB + TAC5211_PLAYBACK_VOLUME_DEFAULT_STEPS)
 
-/* Capture gain, same "0 dB codepoint + half-dB steps" shape as playback above.
- * Both microphones run through ADC channel 1, so this is the level for each.
- */
 #define TAC5211_ADC_DVOL_DEFAULT_REG                                                               \
 	(TAC5211_ADC_DVOL_0_DB + CONFIG_TAC5211_ADC_GAIN_HALF_DB)
 
@@ -132,19 +124,7 @@ static const struct tac5211_eq_band_def eq_band_defs[TAC5211_PLAYBACK_EQ_BAND_CO
 	{
 		.min_freq_hz = TAC5211_PLAYBACK_EQ_BAND2_FREQ_MIN_HZ,
 		.max_freq_hz = TAC5211_PLAYBACK_EQ_BAND2_FREQ_MAX_HZ,
-		/* Was 1000 Hz / Q 0.9. Re-aimed, not re-voiced: a Goertzel probe on
-		 * the uplink during three deliberately provoked rings put this
-		 * device's loop resonances at 1850-3050 Hz, and neither mic_lpf
-		 * (3.4 kHz) nor the 6 kHz shelf reaches down there -- between them
-		 * they buy about a decibel in that band. This section is the only
-		 * filter in the whole chain that can sit on it.
-		 *
-		 * On the speaker rather than the microphone on purpose. Cutting
-		 * 1850-3050 on the uplink would take out exactly what the far end
-		 * says it cannot hear; cutting it on playback costs local
-		 * brightness and buys the loop margin that the capture gain below
-		 * is then free to spend.
-		 */
+		/* Howl cut: measured speaker-to-mic loop resonances at 1850-3050 Hz */
 		.default_freq_hz = 2400U,
 		.default_gain_tenth_db = -70,
 		.default_q_milli = 700U,
@@ -154,27 +134,14 @@ static const struct tac5211_eq_band_def eq_band_defs[TAC5211_PLAYBACK_EQ_BAND_CO
 		.min_freq_hz = TAC5211_PLAYBACK_EQ_BAND3_FREQ_MIN_HZ,
 		.max_freq_hz = TAC5211_PLAYBACK_EQ_BAND3_FREQ_MAX_HZ,
 		.default_freq_hz = 6000U,
-		/* Was +9.0 dB. That shelf sits after the self-echo canceller and
-		 * outside anything it models, in the 3-8 kHz band where the
-		 * speaker and the onboard microphone responses both peak -- so on
-		 * a device with the two side by side it was nine decibels handed
-		 * straight to the feedback loop, and the howl backstop was paying
-		 * for it out of the uplink. Brightness is worth less than the
-		 * talker's level.
-		 *
-		 * Only reaches the speaker: jack_detect.c bypasses the whole EQ
-		 * when a headset is inserted, where there is no loop to feed.
-		 */
+		/* Kept low: speaker and mic responses both peak at 3-8 kHz, feeding howl */
 		.default_gain_tenth_db = 30,
 		.default_q_milli = 707U,
 		.shape = TAC5211_EQ_HIGH_SHELF,
 	},
 };
 
-/* GATT 0-4. Freq/Q/shape stay on eq_band_defs (FLAT geometry). Band 2 is the
- * 2400 Hz / -7 dB howl cut on every preset. Gains in tenth-dB. FLAT is the
- * speaker voicing; the others swing shelves harder so they read on a unit.
- */
+/* Gains in 0.1 dB, indexed by GATT preset 0-4. Band 2 is the howl cut on every preset. */
 #define TAC5211_PLAYBACK_EQ_PRESET_COUNT                                                           \
 	((unsigned)TAC5211_PLAYBACK_EQ_PRESET_BASS_BOOST + 1U)
 
@@ -187,32 +154,22 @@ static const int16_t playback_eq_preset_gain[TAC5211_PLAYBACK_EQ_PRESET_COUNT]
 	[TAC5211_PLAYBACK_EQ_PRESET_BASS_BOOST] = { 90, -70, 0 },
 };
 
-/* The two enabled DAC output channels each own 3 biquads. Per datasheet
- * Table 7-48 (3 biquads/channel): output channel 1 = BQ1/BQ5/BQ9, output
- * channel 2 = BQ2/BQ6/BQ10. Register addresses per the authoritative coefficient
- * map (datasheet section 8.2.5/8.2.6, Table 8-210/211): DAC biquads 1-6 live on
- * page 0x0F, biquads 7-12 on page 0x10. Both channels are programmed with the
- * same coefficients so both headset sides get identical EQ.
- */
+/* Datasheet Table 7-48: out ch1 uses BQ1/5/9, out ch2 BQ2/6/10. Addresses per Table 8-210/211. */
 #define TAC5211_PLAYBACK_EQ_CHANNEL_COUNT 2U
 
 static const struct tac5211_biquad_reg_block
 	playback_biquad_regs[TAC5211_PLAYBACK_EQ_CHANNEL_COUNT][TAC5211_PLAYBACK_EQ_BAND_COUNT] = {
 		{
-			/* output channel 1 */
 			{TAC5211_PAGE_DAC_BQ_1_TO_6, 0x08},  /* DAC_BQ1: band 1 */
 			{TAC5211_PAGE_DAC_BQ_1_TO_6, 0x58},  /* DAC_BQ5: band 2 */
 			{TAC5211_PAGE_DAC_BQ_7_TO_12, 0x30}, /* DAC_BQ9: band 3 */
 		},
 		{
-			/* output channel 2 */
 			{TAC5211_PAGE_DAC_BQ_1_TO_6, 0x1C},  /* DAC_BQ2:  band 1 */
 			{TAC5211_PAGE_DAC_BQ_1_TO_6, 0x6C},  /* DAC_BQ6:  band 2 */
 			{TAC5211_PAGE_DAC_BQ_7_TO_12, 0x44}, /* DAC_BQ10: band 3 */
 	},
 };
-
-/* Register access */
 
 static int reg_write(const struct device *dev, uint8_t reg, uint8_t val)
 {
@@ -241,8 +198,6 @@ static uint8_t playback_volume_reg(int16_t steps)
 {
 	return (uint8_t)(TAC5211_DAC_DVOL_0_DB + steps);
 }
-
-/* Playback EQ */
 
 static int playback_eq_program_locked(const struct device *dev, bool dac_live);
 
@@ -424,13 +379,7 @@ static int playback_biquad_from_band(const struct tac5211_playback_eq_band *band
 	a1 /= a0;
 	a2 /= a0;
 
-	/* The biquad sits before the digital volume control in the DAC chain
-	 * (datasheet Figure 7-69: Mixer -> Biquad -> DVC). A band that boosts
-	 * therefore overflows and clips inside the biquad before any downstream
-	 * attenuation can act. Bake the makeup attenuation into the numerator so
-	 * the filter's passband peak stays <= 0 dBFS (cut-style EQ): scale the
-	 * feed-forward (N) coefficients by 10^(-gain_db/20) for boosting bands.
-	 */
+	/* Biquad precedes DVC (Figure 7-69): attenuate boosts so the peak stays <= 0 dBFS */
 	makeup = (gain_db > 0.0) ? pow(10.0, -gain_db / 20.0) : 1.0;
 
 	tac[0] = b0 * makeup;
@@ -507,10 +456,7 @@ static int playback_eq_scale_nums(struct tac5211_biquad_coeffs *coeffs, double s
 	return err;
 }
 
-/* Per-band boost makeup keeps each biquad peak <= 0 dBFS, so bass/bright sit
- * quieter than FLAT. Scale one section's numerators so midband matches FLAT.
- * Boosted-band peaks can then exceed 0 dBFS by that same amount.
- */
+/* Restore midband level lost to boost makeup so presets match FLAT loudness */
 static int playback_eq_match_flat_loudness(const struct tac5211_playback_eq *eq,
 					   struct tac5211_biquad_coeffs *coeffs)
 {
@@ -876,19 +822,7 @@ int tac5211_playback_eq_preset_set(const struct device *dev,
 	return err;
 }
 
-/* Page 0. Mono mic on ADC channel 1, USB playback on I2S DIN, codec as I2S target.
- * IN2P is selected through the ADC channel-swap mux, not by recording a second
- * analog channel. DYN_PUPD_CFG is written before ADC power-up and runtime jack
- * changes briefly power down only the ADC before changing the mux.
- * The output path is two-channel single-ended: DAC1A drives OUT1P and DAC1B
- * drives OUT1M. The host I2S stream carries the left/right slots. Speaker EQ
- * programs both logical output channels identically; jack insert replaces that
- * with allpass so headphones are unvoiced.
- * GPO1 is explicitly disabled; voice activity detection is performed in
- * software on the nRF using the captured PCM stream.
- * Clocking is auto-detected from the nRF-supplied BCLK/FSYNC, so no PLL setup
- * is needed.
- */
+/* I2S target; clocks auto-detected from BCLK/FSYNC, no PLL setup */
 static const struct reg_config init_config[] = {
 	{TAC5211_REG_PAGE_SEL, TAC5211_PAGE_CONTROL},
 	{TAC5211_REG_GPIO1_CFG0, TAC5211_PIN_DISABLED},
@@ -996,7 +930,7 @@ static int playback_volume_set_locked(const struct device *dev, int16_t steps)
 	steps = CLAMP(steps, TAC5211_PLAYBACK_VOLUME_MIN_STEPS, TAC5211_PLAYBACK_VOLUME_MAX_STEPS);
 
 	data->playback_volume_steps = steps;
-	data->playback_muted = false; /* any gain write makes the output audible again */
+	data->playback_muted = false;
 
 	err = playback_apply_locked(dev);
 	if (err) {
@@ -1034,8 +968,6 @@ static bool channel_supported(audio_channel_t channel)
 {
 	return channel == AUDIO_CHANNEL_ALL;
 }
-
-/* Zephyr audio codec API */
 
 static int tac5211_codec_configure(const struct device *dev, struct audio_codec_cfg *codec_cfg)
 {
@@ -1107,9 +1039,7 @@ static int tac5211_codec_configure(const struct device *dev, struct audio_codec_
 
 	k_sleep(K_MSEC(16)); /* register init time after reset (TI SBAA600: 16 ms) */
 
-	/* Exit sleep with DREG and VREF enabled. Coefficient and channel
-	 * configuration must wait 10 ms after wake-up.
-	 */
+	/* Coefficient and channel config must wait 10 ms after wake-up */
 	err = reg_write_page(dev, TAC5211_PAGE_CONTROL, TAC5211_REG_DEV_MISC_CFG,
 			     TAC5211_DEV_MISC_ACTIVE_WITH_VREF);
 	if (err == 0) {
@@ -1134,10 +1064,6 @@ static int tac5211_codec_configure(const struct device *dev, struct audio_codec_
 	k_mutex_unlock(&data->lock);
 
 	if (err == 0) {
-		/* Report the mic gain in dB rather than in register steps, so a
-		 * boot log answers "how loud is the microphone set" without
-		 * anyone deriving it from the datasheet's codepoints.
-		 */
 		LOG_INF("TAC5211 configured (48 kHz, 16-bit, playback+capture, mic=%s, "
 			"mic gain=+%d.%d dB, eq=%s)",
 			capture_input_name(configured_input),

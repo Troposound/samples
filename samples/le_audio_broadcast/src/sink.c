@@ -4,11 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* LE Audio broadcast sink: scan for a Broadcast Audio Announcement, PA sync, read the
- * BASE, BIG sync to its front left and front right BISes, decode LC3 to 48 kHz and play
- * them on the TAC5211 left and right channels. A broadcast without a left/right pair
- * plays its first BIS on both channels.
- */
+/* Front left/right BIS -> LC3 48 kHz -> TAC5211; without a pair the first BIS plays on both */
 
 #include <string.h>
 #include <strings.h>
@@ -45,8 +41,6 @@ LOG_MODULE_REGISTER(broadcast_sink, LOG_LEVEL_INF);
 BUILD_ASSERT(AUDIO_I2S_BLOCK_WORDS == FRAME_SAMPLES, "I2S block must be one 10 ms LC3 frame");
 BUILD_ASSERT(STRIP_FRAME_SAMPLES == FRAME_SAMPLES);
 
-/* --- Audio output ------------------------------------------------------- */
-
 struct lc3_frame {
 	uint16_t len;
 	uint8_t stream;
@@ -60,7 +54,7 @@ K_MSGQ_DEFINE(ready_q, sizeof(uint32_t *), BLOCK_COUNT, sizeof(uint32_t *));
 
 static uint32_t pcm_blocks[BLOCK_COUNT][FRAME_SAMPLES];
 static uint32_t tx_silence[FRAME_SAMPLES]; /* EasyDMA reads RAM only */
-static uint32_t rx_scratch[FRAME_SAMPLES]; /* capture is not used by the sink */
+static uint32_t rx_scratch[FRAME_SAMPLES];
 static bool primed;
 
 static lc3_decoder_mem_48k_t lc3_mem[MAX_STREAMS];
@@ -90,7 +84,7 @@ static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 		if (k_msgq_get(&ready_q, &blk, K_NO_WAIT) == 0) {
 			next = blk;
 		} else {
-			primed = false; /* underrun: refill before playing again */
+			primed = false; /* Underrun: refill before playing again */
 		}
 	}
 
@@ -104,19 +98,18 @@ static void frames_play(const struct lc3_frame *frames, uint32_t have)
 
 	for (size_t i = 0; i < count; i++) {
 		if (lc3_dec[i] == NULL) {
-			return; /* not configured yet */
+			return;
 		}
 	}
 
 	if (k_msgq_get(&free_q, &blk, K_NO_WAIT) != 0) {
-		return; /* playback is behind: drop */
+		return; /* Playback is behind: drop */
 	}
 
 	for (size_t i = 0; i < count; i++) {
 		const struct lc3_frame *f = &frames[i];
 		const bool ok = (have & BIT(i)) && f->valid;
 
-		/* NULL input runs packet loss concealment */
 		(void)lc3_decode(lc3_dec[i], ok ? f->data : NULL, f->len, LC3_PCM_FORMAT_S16,
 				 (int16_t *)blk + stream_slot[i], 2);
 	}
@@ -132,9 +125,7 @@ static void frames_play(const struct lc3_frame *frames, uint32_t have)
 	(void)k_msgq_put(&ready_q, &blk, K_NO_WAIT);
 }
 
-/* Each BIS delivers one frame per BIG event, valid or not, so a frame pairs
- * with the others that arrived since; a stream seen twice closes the event.
- */
+/* Each BIS delivers one frame per BIG event; a stream seen twice closes the event */
 static void decoder_thread(void *p1, void *p2, void *p3)
 {
 	static struct lc3_frame frames[MAX_STREAMS];
@@ -206,7 +197,7 @@ static int audio_out_start(void)
 		return err;
 	}
 
-	/* Codec auto-detects its clocks from BCLK/FSYNC, so configure after start. */
+	/* Codec auto-detects its clocks from BCLK/FSYNC, so configure after start */
 	err = audio_codec_configure(codec, &cfg);
 	if (err) {
 		LOG_ERR("TAC5211 configure failed (%d)", err);
@@ -221,8 +212,6 @@ static int audio_out_start(void)
 
 	return 0;
 }
-
-/* --- Broadcast sink ----------------------------------------------------- */
 
 static K_SEM_DEFINE(sem_found, 0, 1);
 static K_SEM_DEFINE(sem_pa_synced, 0, 1);
@@ -355,7 +344,7 @@ static bool base_subgroup_cb(const struct bt_bap_base_subgroup *subgroup, void *
 	struct bis_choice *c = user_data;
 	struct bt_audio_codec_cfg cfg = {0};
 
-	/* A left/right pair has to come from one subgroup. */
+	/* A left/right pair has to come from one subgroup */
 	c->left = 0;
 	c->right = 0;
 	c->subgroup_loc = BT_AUDIO_LOCATION_MONO_AUDIO;
@@ -474,7 +463,7 @@ static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf
 	};
 
 	if (!atomic_get(&searching) || info->interval == 0U) {
-		return; /* no periodic advertising, so not a broadcast source */
+		return;
 	}
 
 	bt_data_parse(ad, ad_parse_cb, &ctx);
@@ -554,11 +543,7 @@ static void session_reset(void)
 		sink = NULL;
 	}
 
-	/* Deleting the sink leaves its scan delegator receive state behind;
-	 * remove it so the next session can add a new one. The state still
-	 * reads PA synced, and rem_src then silently keeps it, so mark it
-	 * unsynced first.
-	 */
+	/* Sink delete leaves the receive state; rem_src keeps it while it reads PA synced */
 	bt_bap_scan_delegator_foreach_state(src_id_collect, &src);
 	for (size_t i = 0; i < src.count; i++) {
 		uint32_t no_bis[BT_BAP_BASS_MAX_SUBGROUPS] = {0};
@@ -615,7 +600,7 @@ static int session_run(void)
 	bt_addr_le_copy(&pa_param.addr, &found_addr);
 	pa_param.sid = found_sid;
 	pa_param.skip = 0;
-	/* 10 PA intervals, in 10 ms units: interval is in 1.25 ms units */
+	/* 10 PA intervals in 10 ms units; interval is in 1.25 ms units */
 	pa_param.timeout = CLAMP((found_interval * 125U) / 100U, BT_GAP_PER_ADV_MIN_TIMEOUT,
 				 BT_GAP_PER_ADV_MAX_TIMEOUT);
 

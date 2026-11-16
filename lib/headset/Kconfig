@@ -13,6 +13,5 @@ config TROPOSOUND_HEADSET_MIC_GAIN_DB
 	default 24
 	depends on TROPOSOUND_HEADSET
 	help
-	  Headset mics are far quieter than the built-in one. The codec adds
-	  TAC5211_ADC_GAIN_EXT_EXTRA_HALF_DB, this adds the rest in software
-	  through a soft clipper.
+	  Software gain with soft clipping, on top of
+	  TAC5211_ADC_GAIN_EXT_EXTRA_HALF_DB in the codec.

@@ -5,19 +5,9 @@
  */
 
 /*
- * USB Audio Class 2 soundcard on the TAC5211.
- *
- * Playback: USB OUT (48 kHz, 16-bit stereo) -> play ring -> I2S TX -> codec.
- * Capture:  codec ADC ch1 -> I2S RX left slot -> mic ring -> USB IN (mono).
- *
- * The I2S runs from the 12.288 MHz audio PLL, not from the USB SOF, so both
- * directions are asynchronous. The IN side sends 47/48/49 samples per frame
- * depending on the mic ring fill, so its rate tracks the I2S clock; with
- * implicit feedback the host paces OUT from it (the nRF5340 USBD has only one
- * isochronous IN endpoint, so there is no room for explicit feedback).
- *
- * Both rings are single-producer/single-consumer. The I2S ISR is one side of
- * each; the USB stack thread is the other.
+ * I2S runs from the audio PLL, not SOF. IN sends 47/48/49 samples per frame to
+ * track it and the host paces OUT from that (implicit feedback: the nRF5340
+ * USBD has only one isochronous IN endpoint).
  */
 
 #include <errno.h>
@@ -46,36 +36,31 @@ LOG_MODULE_REGISTER(usb_audio, LOG_LEVEL_INF);
 
 #define FRAMES_PER_MS       (AUDIO_I2S_SAMPLE_RATE_HZ / 1000)
 #define STEREO_FRAME_BYTES  (2 * sizeof(int16_t))
-/* Async full-speed: up to one extra frame per USB frame. */
+/* Async: up to one extra frame per USB frame */
 #define PLAY_MAX_BYTES      ((FRAMES_PER_MS + 1) * STEREO_FRAME_BYTES)
 #define MIC_MAX_BYTES       ((FRAMES_PER_MS + 1) * sizeof(int16_t))
 
-/* Ring sizes are powers of two; counters run free and wrap naturally. */
+/* Must be powers of two, counters run free */
 #define PLAY_RING_FRAMES    512U
 #define MIC_RING_SAMPLES    512U
-/* Wait for this much host audio before feeding the I2S. One I2S block is
- * drained at a time, so the fill swings by FRAMES_PER_MS around the mean.
- */
+/* Fill swings by one I2S block, so prime well above that */
 #define PLAY_PRIME_FRAMES   (3 * FRAMES_PER_MS)
 #define MIC_TARGET_SAMPLES  (2 * FRAMES_PER_MS)
 
-/* Encoder start-up volume; the R1 knob sets it from its position. */
+/* Encoder only; the R1 knob reports its position */
 #define VOLUME_START_HALF_DB (-20)
-
 
 BUILD_ASSERT(AUDIO_I2S_BLOCK_WORDS == FRAMES_PER_MS,
 	     "Set CONFIG_TROPOSOUND_AUDIO_I2S_BLOCK_WORDS=48 (1 ms blocks)");
 
-/* Play ring: one uint32 per stereo frame, left in the low half-word. That is
- * also the USB byte order (L, R little-endian) and the I2S word layout.
- */
+/* One word per stereo frame, left in the low half: matches both USB and I2S layout */
 static uint32_t play_ring[PLAY_RING_FRAMES];
-static atomic_t play_head; /* written by USB */
-static atomic_t play_tail; /* written by I2S ISR */
+static atomic_t play_head;
+static atomic_t play_tail;
 
 static int16_t mic_ring[MIC_RING_SAMPLES];
-static atomic_t mic_head; /* written by I2S ISR */
-static atomic_t mic_tail; /* written by USB */
+static atomic_t mic_head;
+static atomic_t mic_tail;
 
 static atomic_t play_enabled;
 static atomic_t mic_enabled;
@@ -113,15 +98,13 @@ static uint32_t mic_fill(void)
 	return (uint32_t)atomic_get(&mic_head) - (uint32_t)atomic_get(&mic_tail);
 }
 
-/* ---- I2S side (ISR) ---- */
-
 static void fill_tx(uint32_t *tx)
 {
 	uint32_t tail = (uint32_t)atomic_get(&play_tail);
 	uint32_t avail;
 
 	if (!atomic_get(&play_enabled)) {
-		/* Consumer-side flush, so the next stream starts empty. */
+		/* Consumer-side flush */
 		atomic_set(&play_tail, atomic_get(&play_head));
 		play_primed = false;
 		memset(tx, 0, AUDIO_I2S_BLOCK_WORDS * sizeof(uint32_t));
@@ -139,7 +122,6 @@ static void fill_tx(uint32_t *tx)
 	}
 
 	if (avail < AUDIO_I2S_BLOCK_WORDS) {
-		/* Underrun: play what is there, pad, and re-prime. */
 		atomic_inc(&underruns);
 		play_primed = false;
 	}
@@ -159,7 +141,7 @@ static void push_mic(uint32_t *rx)
 	uint32_t space = MIC_RING_SAMPLES - (head - (uint32_t)atomic_get(&mic_tail));
 	uint32_t n = MIN(space, AUDIO_I2S_BLOCK_WORDS);
 
-	/* ADC channel 1 sits in the left slot (low half-word). */
+	/* ADC channel 1 is in the left slot */
 	headset_mic_gain((int16_t *)rx, n, 2);
 	for (uint32_t i = 0; i < n; i++) {
 		mic_ring[(head + i) & (MIC_RING_SAMPLES - 1)] = (int16_t)(rx[i] & 0xFFFF);
@@ -180,8 +162,6 @@ static void i2s_cb(uint32_t *released_rx, const uint32_t *released_tx)
 	i2s_next ^= 1U;
 }
 
-/* ---- USB side (USBD thread) ---- */
-
 static void terminal_update_cb(const struct device *dev, uint8_t terminal, bool enabled,
 			       bool microframes, void *user_data)
 {
@@ -194,7 +174,7 @@ static void terminal_update_cb(const struct device *dev, uint8_t terminal, bool 
 		headset_speaker_set(enabled);
 		LOG_INF("Playback stream %s", enabled ? "started" : "stopped");
 	} else if (terminal == IN_TERMINAL_ID) {
-		/* Consumer-side flush: start capture with fresh samples. */
+		/* Consumer-side flush */
 		atomic_set(&mic_tail, atomic_get(&mic_head));
 		atomic_set(&mic_enabled, enabled);
 		LOG_INF("Capture stream %s", enabled ? "started" : "stopped");
@@ -256,7 +236,7 @@ static void sof_cb(const struct device *dev, void *user_data)
 		return;
 	}
 
-	/* Hold the ring around its target: one sample more or less per ms. */
+	/* Steer the fill toward the target, one sample per ms */
 	if (fill > MIC_TARGET_SAMPLES + FRAMES_PER_MS / 2) {
 		n++;
 	} else if (fill < MIC_TARGET_SAMPLES - FRAMES_PER_MS / 2) {
@@ -333,7 +313,7 @@ static int usb_init(void)
 		return ret;
 	}
 
-	/* UAC2 uses an Interface Association Descriptor. */
+	/* IAD device class */
 	usbd_device_set_code_triple(&usbd_ctx, USBD_SPEED_FS, USB_BCC_MISCELLANEOUS, 0x02, 0x01);
 
 	ret = usbd_msg_register_cb(&usbd_ctx, usbd_msg_cb);
@@ -349,8 +329,6 @@ static int usb_init(void)
 
 	return ret;
 }
-
-/* ---- Audio bring-up ---- */
 
 static int audio_init(void)
 {
@@ -386,9 +364,7 @@ static int audio_init(void)
 	}
 	i2s_next = 1U;
 
-	/* The codec auto-detects its clocks from BCLK/FSYNC, so the I2S must
-	 * already be running.
-	 */
+	/* Codec detects its clocks from BCLK/FSYNC, so I2S must be running */
 	ret = audio_codec_configure(codec_dev, &cfg);
 	if (ret) {
 		LOG_ERR("Codec configure failed: %d", ret);

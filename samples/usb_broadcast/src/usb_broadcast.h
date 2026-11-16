@@ -17,12 +17,10 @@ int usb_start(void);
 void usb_volume_set(int half_db);
 void usb_stats_log(void);
 
-/* One 10 ms stereo frame of host audio, or silence while there is none.
- * One word per sample pair, left in the low half-word.
- */
+/* One frame, left in the low half-word; silence when the host is idle */
 void usb_frame_get(uint32_t *pcm);
 
-/* Returns once both BISes are up. */
+/* Returns once both BISes are up */
 int broadcast_start(void);
 
 #endif /* USB_BROADCAST_H_ */

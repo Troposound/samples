@@ -7,9 +7,7 @@ config TROPOSOUND_AUDIO_I2S
 	select NRFX_I2S
 	select PINCTRL
 	help
-	  nrfx I2S0 master clocked from the 12.288 MHz audio PLL, so LRCK is
-	  exactly 48 kHz. Double-buffered DMA; the callback hands back each
-	  released RX/TX pair.
+	  Clocked from the 12.288 MHz audio PLL, so LRCK is exactly 48 kHz.
 
 config TROPOSOUND_AUDIO_I2S_BLOCK_WORDS
 	int "Words per DMA block (one word = one stereo 16-bit frame)"
