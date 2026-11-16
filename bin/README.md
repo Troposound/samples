@@ -1,6 +1,6 @@
 # Prebuilt images
 
-Every sample built for each board with nRF Connect SDK v3.4.0, application
+Every sample built for each board with nRF Connect SDK v3.4.2, application
 and network core merged into one file: `bin/<board>/<sample>.hex`.
 
 | Image | What it is |
