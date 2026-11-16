@@ -20,3 +20,6 @@ AGENTS.md
 task_plan.md
 findings.md
 progress.md
+
+# Firmware images (published as GitHub Release assets)
+bin/*/
