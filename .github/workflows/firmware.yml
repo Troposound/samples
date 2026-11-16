@@ -64,3 +64,16 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  website:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Trigger website build
+        env:
+          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::warning::NETLIFY_BUILD_HOOK is not set"; exit 0; fi
+          curl -fsS -X POST -d '{}' "$HOOK?trigger_title=Release+${GITHUB_REF_NAME}"

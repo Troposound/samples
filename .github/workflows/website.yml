@@ -1,0 +1,24 @@
+# Copyright (c) 2026 Troposound
+# SPDX-License-Identifier: Apache-2.0
+
+name: Website
+
+on:
+  release:
+    types: [published, edited, unpublished, deleted]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Trigger website build
+        env:
+          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::warning::NETLIFY_BUILD_HOOK is not set"; exit 0; fi
+          curl -fsS -X POST -d '{}' "$HOOK?trigger_title=${GITHUB_EVENT_NAME}"
