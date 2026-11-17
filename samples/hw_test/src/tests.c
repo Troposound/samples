@@ -31,7 +31,6 @@
 #define USER_NODE    DT_PATH(zephyr_user)
 #define CODEC_NODE   DT_COMPAT_GET_ANY_STATUS_OKAY(ti_tac5211)
 #define GAUGE_NODE   DT_ALIAS(fuel_gauge0)
-#define PROMPT_TIME  K_SECONDS(10)
 
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
@@ -42,6 +41,7 @@ static const struct gpio_dt_spec leds[] = {
 static enum result test_leds(void)
 {
 	static const char *const names[] = { "red", "green", "blue" };
+	int ans = -EAGAIN;
 
 	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
 		if (!gpio_is_ready_dt(&leds[i]) ||
@@ -51,22 +51,21 @@ static enum result test_leds(void)
 		}
 	}
 
-	printk("    Watch the RGB LED: red, green, blue, white\n");
-	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
-		gpio_pin_set_dt(&leds[i], 1);
-		k_msleep(700);
-		gpio_pin_set_dt(&leds[i], 0);
+	printk("    The RGB LED cycles red, green, blue, white. All four correct? [y/n]\n");
+	key_flush();
+	/* Last step lights all three: white */
+	for (size_t step = 0; ans < 0; step = (step + 1) % (ARRAY_SIZE(leds) + 1)) {
+		for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
+			gpio_pin_set_dt(&leds[i], step == i || step == ARRAY_SIZE(leds));
+		}
+		ans = yn_wait(K_MSEC(700));
 	}
-	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
-		gpio_pin_set_dt(&leds[i], 1);
-	}
-	k_msleep(700);
 	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
 		gpio_pin_set_dt(&leds[i], 0);
 	}
 
-	note("visual: red, green, blue, white shown");
-	return PASS;
+	note("operator: red, green, blue, white %s", ans ? "ok" : "NOT ok");
+	return ans ? PASS : FAIL;
 }
 
 static enum result test_clocks(void)
@@ -176,6 +175,7 @@ static enum result test_audio(void)
 	struct audio_level loud;
 	uint32_t expect = (2000U * (AUDIO_I2S_SAMPLE_RATE_HZ / 1000U)) / AUDIO_I2S_BLOCK_WORDS;
 	uint32_t late;
+	bool heard;
 	int rise;
 	int err;
 
@@ -185,12 +185,14 @@ static enum result test_audio(void)
 		return FAIL;
 	}
 
-	printk("    Listen: 2 s silence, then 2 s of 1 kHz tone on speaker/headphones\n");
+	printk("    Measuring: 2 s silence, then 1 kHz tone on speaker/headphones\n");
 	hw_audio_mode(AUDIO_SILENT);
 	hw_audio_measure(2000, &quiet);
 	hw_audio_mode(AUDIO_TONE);
 	hw_audio_measure(2000, &loud);
 	late = audio_i2s_late_count_reset();
+	key_flush();
+	heard = ask_yn("Do you hear a steady 1 kHz tone?");
 	hw_audio_stop();
 
 	if (quiet.blocks < expect * 9U / 10U || quiet.blocks > expect * 11U / 10U) {
@@ -206,13 +208,16 @@ static enum result test_audio(void)
 
 	/* Acoustic path; headset ear cups may keep the tone from the mic */
 	rise = (loud.tone_dbfs_x10 - quiet.tone_dbfs_x10) / 10;
-	note("mic %d dBFS; 1 kHz at mic %d -> %d dBFS (%+d dB) with tone; late %u",
-	     quiet.rms_dbfs_x10 / 10, quiet.tone_dbfs_x10 / 10, loud.tone_dbfs_x10 / 10, rise,
-	     late);
+	note("%s; mic %d dBFS; 1 kHz at mic %d -> %d dBFS (%+d dB); late %u",
+	     heard ? "tone heard" : "tone NOT heard", quiet.rms_dbfs_x10 / 10,
+	     quiet.tone_dbfs_x10 / 10, loud.tone_dbfs_x10 / 10, rise, late);
+
+	if (!heard) {
+		return FAIL;
+	}
 
 	if (rise < 10) {
-		printk("    Tone not picked up by the mic: confirm you heard it\n");
-		return WARN;
+		return WARN; /* heard, but the mic did not pick it up */
 	}
 
 	return late ? WARN : PASS;
@@ -335,9 +340,15 @@ static enum result test_usb(void)
 		return FAIL;
 	}
 
-	if (k_sem_take(&usb_configured, K_SECONDS(5)) != 0) {
-		note("VBUS ok, but no host enumerated the board in 5 s (D+/D-, cable, hub)");
-		return FAIL;
+	if (k_sem_take(&usb_configured, K_SECONDS(2)) != 0) {
+		printk("    Waiting for a host to enumerate the board (n to give up) ...\n");
+		key_flush();
+		while (k_sem_take(&usb_configured, K_MSEC(100)) != 0) {
+			if (said_no()) {
+				note("VBUS ok, but no host enumerated the board (D+/D-, cable, hub)");
+				return FAIL;
+			}
+		}
 	}
 	k_sem_give(&usb_configured); /* stays configured for re-runs */
 
@@ -362,9 +373,15 @@ static enum result test_buttons(void)
 	char missed[48] = "";
 
 	for (size_t i = 0; i < ARRAY_SIZE(buttons); i++) {
-		printk("    Press %s ...\n", buttons[i].label);
-		if (key_wait(buttons[i].code, PROMPT_TIME) < 0) {
-			printk("    %s: timeout\n", buttons[i].label);
+		bool no = false;
+
+		printk("    Press %s (n if nothing happens) ...\n", buttons[i].label);
+		key_flush();
+		while (!no && key_wait(buttons[i].code, K_MSEC(20)) < 0) {
+			no = said_no();
+		}
+		if (no) {
+			printk("    %s: not detected\n", buttons[i].label);
 			strncat(missed, buttons[i].label, sizeof(missed) - strlen(missed) - 2);
 			strcat(missed, " ");
 			r = FAIL;
@@ -391,7 +408,6 @@ static enum result test_pot(void)
 	int16_t raw;
 	int lo = INT16_MAX;
 	int hi = INT16_MIN;
-	k_timepoint_t end = sys_timepoint_calc(PROMPT_TIME);
 
 	if (!adc_is_ready_dt(&pot) || adc_channel_setup_dt(&pot) < 0) {
 		note("ADC not ready");
@@ -401,8 +417,9 @@ static enum result test_pot(void)
 	seq.buffer = &raw;
 	seq.buffer_size = sizeof(raw);
 
-	printk("    Turn the volume knob fully down and fully up ...\n");
-	while (!sys_timepoint_expired(end)) {
+	printk("    Turn the volume knob fully down and fully up (n if it does nothing) ...\n");
+	key_flush();
+	while (!said_no()) {
 		if (adc_read_dt(&pot, &seq) < 0) {
 			note("ADC read failed");
 			return FAIL;
@@ -423,22 +440,19 @@ static enum result test_pot(void)
 
 #if DT_NODE_EXISTS(DT_ALIAS(jack_detect))
 static enum result test_switch(const struct gpio_dt_spec *pin, const char *what,
-			       const char *action, enum result on_timeout)
+			       const char *action, enum result on_no)
 {
 	int before = gpio_pin_get_dt(pin);
 
-	printk("    %s now %s. %s ...\n", what, before ? "ACTIVE" : "inactive", action);
+	printk("    %s now %s. %s (n if nothing happens) ...\n", what,
+	       before ? "ACTIVE" : "inactive", action);
 	key_flush();
-	while (1) {
-		int v = key_wait(-1, PROMPT_TIME);
-
-		if (v < 0) {
+	while (gpio_pin_get_dt(pin) == before) {
+		if (said_no()) {
 			note("%s stayed %s", what, before ? "active" : "inactive");
-			return on_timeout;
+			return on_no;
 		}
-		if (gpio_pin_get_dt(pin) != before) {
-			break;
-		}
+		k_msleep(20);
 	}
 
 	note("%s changed %s -> %s", what, before ? "active" : "inactive",
@@ -476,9 +490,9 @@ static enum result test_gauge_alert(void)
 static enum result test_encoder(void)
 {
 	const struct device *qdec = DEVICE_DT_GET(DT_ALIAS(qdec0));
-	k_timepoint_t end = sys_timepoint_calc(PROMPT_TIME);
 	struct sensor_value rot;
-	int total = 0;
+	bool left = false;
+	bool right = false;
 
 	if (!device_is_ready(qdec)) {
 		note("QDEC not ready");
@@ -486,27 +500,35 @@ static enum result test_encoder(void)
 	}
 
 	(void)sensor_sample_fetch(qdec); /* drop stale count */
-	printk("    Turn the encoder a quarter turn ...\n");
-	while (!sys_timepoint_expired(end) && abs(total) < 90) {
+	printk("    Turn the encoder left and right (n if nothing happens) ...\n");
+	key_flush();
+	while (!(left && right) && !said_no()) {
 		if (sensor_sample_fetch(qdec) == 0 &&
 		    sensor_channel_get(qdec, SENSOR_CHAN_ROTATION, &rot) == 0) {
-			total += rot.val1;
+			if (rot.val1 < 0 && !left) {
+				left = true;
+				printk("    left: ok\n");
+			} else if (rot.val1 > 0 && !right) {
+				right = true;
+				printk("    right: ok\n");
+			}
 		}
 		k_msleep(20);
 	}
 
-	note("rotated %d deg", total);
-	return abs(total) >= 90 ? PASS : FAIL;
+	note("left %s, right %s", left ? "ok" : "NOT seen", right ? "ok" : "NOT seen");
+	return (left && right) ? PASS : FAIL;
 }
 #endif
 
 #if DT_NODE_EXISTS(DT_ALIAS(led_strip))
 #define STRIP_NODE     DT_ALIAS(led_strip)
-#define STRIP_LEN      DT_PROP(STRIP_NODE, chain_length)
+/* WS2812 can't report its length; bits past the last LED fall off the end */
+#define STRIP_MAX_LEN  256
 #define SYMBOL_BITS    DT_PROP(STRIP_NODE, bits_per_symbol)
 #define SPI_HZ         DT_PROP(STRIP_NODE, spi_max_frequency)
 #define PREAMBLE_BYTES DIV_ROUND_UP(DT_PROP(STRIP_NODE, reset_delay) * (SPI_HZ / 1000000), 8)
-#define FRAME_BYTES    (PREAMBLE_BYTES + DIV_ROUND_UP(STRIP_LEN * 24 * SYMBOL_BITS, 8) + 1)
+#define FRAME_BYTES    (PREAMBLE_BYTES + DIV_ROUND_UP(STRIP_MAX_LEN * 24 * SYMBOL_BITS, 8) + 1)
 
 static uint8_t strip_frame[FRAME_BYTES];
 
@@ -519,7 +541,7 @@ static int strip_fill(const struct spi_dt_spec *spi, uint8_t r, uint8_t g, uint8
 	size_t bit = PREAMBLE_BYTES * 8;
 
 	memset(strip_frame, 0, sizeof(strip_frame));
-	for (int i = 0; i < STRIP_LEN; i++) {
+	for (int i = 0; i < STRIP_MAX_LEN; i++) {
 		for (int c = 0; c < 3; c++) {
 			for (int k = 7; k >= 0; k--) {
 				uint8_t sym = (grb[c] & BIT(k)) ? DT_PROP(STRIP_NODE, spi_one_frame)
@@ -543,10 +565,12 @@ static enum result test_led_strip(void)
 		STRIP_NODE, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8));
 	static const struct gpio_dt_spec en = GPIO_DT_SPEC_GET(USER_NODE, extled_en_gpios);
 	static const struct gpio_dt_spec fault = GPIO_DT_SPEC_GET(USER_NODE, extled_fault_gpios);
+	/* Dim, so a full-length strip stays within the VLED switch limit */
 	static const uint8_t colors[][3] = {
-		{ 40, 0, 0 }, { 0, 40, 0 }, { 0, 0, 40 }, { 30, 30, 30 }, { 0, 0, 0 },
+		{ 16, 0, 0 }, { 0, 16, 0 }, { 0, 0, 16 }, { 10, 10, 10 }, { 0, 0, 0 },
 	};
 	bool faulted = false;
+	int ans = -EAGAIN;
 
 	if (!spi_is_ready_dt(&spi) || !gpio_is_ready_dt(&en) || !gpio_is_ready_dt(&fault)) {
 		note("SPI/GPIO not ready");
@@ -557,17 +581,20 @@ static enum result test_led_strip(void)
 	gpio_pin_configure_dt(&en, GPIO_OUTPUT_ACTIVE);
 	k_msleep(20);
 
-	printk("    Watch the %d-LED strip: red, green, blue, white, off\n", STRIP_LEN);
-	for (size_t i = 0; i < ARRAY_SIZE(colors); i++) {
+	printk("    The LED strip cycles red, green, blue, white, off.\n"
+	       "    All LEDs show every color? [y/n]\n");
+	key_flush();
+	for (size_t i = 0; ans < 0; i = (i + 1) % ARRAY_SIZE(colors)) {
 		if (strip_fill(&spi, colors[i][0], colors[i][1], colors[i][2]) < 0) {
 			note("SPI write failed");
 			gpio_pin_set_dt(&en, 0);
 			return FAIL;
 		}
-		k_msleep(700);
+		ans = yn_wait(K_MSEC(700));
 		faulted |= gpio_pin_get_dt(&fault) > 0;
 	}
 
+	(void)strip_fill(&spi, 0, 0, 0);
 	gpio_pin_set_dt(&en, 0);
 
 	if (faulted) {
@@ -575,8 +602,8 @@ static enum result test_led_strip(void)
 		return FAIL;
 	}
 
-	note("visual: R/G/B/W on %d LEDs, VLED no fault", STRIP_LEN);
-	return PASS;
+	note("operator: R/G/B/W on all LEDs %s, VLED no fault", ans ? "ok" : "NOT ok");
+	return ans ? PASS : FAIL;
 }
 #endif
 

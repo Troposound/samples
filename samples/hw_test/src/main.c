@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,9 +14,12 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/input/input.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/shell/shell_uart.h>
 #include <zephyr/sys/printk.h>
 
 #include "hw_test.h"
+
+#define RUN_ALL -1
 
 struct key_evt {
 	uint16_t code;
@@ -23,6 +27,9 @@ struct key_evt {
 };
 
 K_MSGQ_DEFINE(key_q, sizeof(struct key_evt), 16, 4);
+K_MSGQ_DEFINE(con_q, sizeof(uint8_t), 16, 1);
+/* Test index or RUN_ALL; tests run in main so the shell thread can feed con_q */
+K_MSGQ_DEFINE(run_q, sizeof(int), 4, 4);
 K_MUTEX_DEFINE(hw_run_lock);
 
 static const struct gpio_dt_spec led_r = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -57,9 +64,51 @@ static void input_cb(struct input_event *evt, void *user_data)
 }
 INPUT_CALLBACK_DEFINE(NULL, input_cb, NULL);
 
+static void con_bypass(const struct shell *sh, uint8_t *data, size_t len, void *user_data)
+{
+	ARG_UNUSED(sh);
+	ARG_UNUSED(user_data);
+
+	for (size_t i = 0; i < len; i++) {
+		(void)k_msgq_put(&con_q, &data[i], K_NO_WAIT);
+	}
+}
+
 void key_flush(void)
 {
 	k_msgq_purge(&key_q);
+	k_msgq_purge(&con_q);
+}
+
+int yn_wait(k_timeout_t timeout)
+{
+	k_timepoint_t end = sys_timepoint_calc(timeout);
+	uint8_t c;
+
+	while (k_msgq_get(&con_q, &c, sys_timepoint_timeout(end)) == 0) {
+		c = tolower(c);
+		if (c == 'y' || c == 'n') {
+			return c == 'y';
+		}
+	}
+
+	return -EAGAIN;
+}
+
+bool ask_yn(const char *question)
+{
+	bool yes;
+
+	printk("    %s [y/n]\n", question);
+	yes = yn_wait(K_FOREVER) == 1;
+	printk("    %s\n", yes ? "yes" : "no");
+
+	return yes;
+}
+
+bool said_no(void)
+{
+	return yn_wait(K_NO_WAIT) == 0;
 }
 
 int key_wait(int code, k_timeout_t timeout)
@@ -104,22 +153,39 @@ static void summary(size_t first, size_t last)
 	}
 	printk("==== %zu pass, %zu warn, %zu fail, %zu skip ====\n", n[PASS], n[WARN], n[FAIL],
 	       n[SKIP]);
+	printk("==== RESULT: %s ====\n", n[FAIL] > 0 ? "NO PASS" : "PASS");
 	printk("Re-run: 'hw run' (all) or 'hw run <name>'; list: 'hw list'\n");
 
 	gpio_pin_set_dt(&led_r, n[FAIL] > 0);
 	gpio_pin_set_dt(&led_g, n[FAIL] == 0);
 }
 
-static void run_all(void)
+static void run(int idx)
 {
+	const struct shell *sh = shell_backend_uart_get_ptr();
+	size_t first = (idx == RUN_ALL) ? 0 : idx;
+	size_t last = (idx == RUN_ALL) ? hw_tests_count - 1 : idx;
+
 	k_mutex_lock(&hw_run_lock, K_FOREVER);
-	hw_running_all = true;
-	for (size_t i = 0; i < hw_tests_count; i++) {
+	shell_set_bypass(sh, con_bypass, NULL);
+	hw_running_all = (idx == RUN_ALL);
+	for (size_t i = first; i <= last; i++) {
 		run_one(i);
 	}
 	hw_running_all = false;
-	summary(0, hw_tests_count - 1);
+	summary(first, last);
+	shell_set_bypass(sh, NULL, NULL);
 	k_mutex_unlock(&hw_run_lock);
+}
+
+static int queue_run(const struct shell *sh, int idx)
+{
+	if (k_msgq_put(&run_q, &idx, K_NO_WAIT) != 0) {
+		shell_error(sh, "Run queue full");
+		return -EBUSY;
+	}
+
+	return 0;
 }
 
 static int cmd_list(const struct shell *sh, size_t argc, char **argv)
@@ -137,17 +203,12 @@ static int cmd_list(const struct shell *sh, size_t argc, char **argv)
 static int cmd_run(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc < 2) {
-		run_all();
-		return 0;
+		return queue_run(sh, RUN_ALL);
 	}
 
 	for (size_t i = 0; i < hw_tests_count; i++) {
 		if (strcmp(argv[1], hw_tests[i].name) == 0) {
-			k_mutex_lock(&hw_run_lock, K_FOREVER);
-			run_one(i);
-			summary(i, i);
-			k_mutex_unlock(&hw_run_lock);
-			return 0;
+			return queue_run(sh, i);
 		}
 	}
 
@@ -182,16 +243,21 @@ SHELL_CMD_REGISTER(hw, &hw_cmds, "Troposound hardware test", NULL);
 
 int main(void)
 {
+	int idx;
+
 	if (hw_tests_count > ARRAY_SIZE(results)) {
 		printk("Test table larger than the result table\n");
 		return 0;
 	}
 
 	printk("\n*** Troposound %s hardware test, %zu tests ***\n", CONFIG_BOARD, hw_tests_count);
-	printk("Interactive steps wait up to 10 s; follow the prompts.\n");
+	printk("Follow the prompts: answer y/n, or do the action (n if it does nothing).\n");
 	k_msleep(1000);
 
-	run_all();
+	run(RUN_ALL);
+	while (k_msgq_get(&run_q, &idx, K_FOREVER) == 0) {
+		run(idx);
+	}
 
 	return 0;
 }

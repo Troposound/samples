@@ -132,7 +132,6 @@ enum result test_radio(void)
 }
 
 #define RF_LOOP_VOLUME (-40) /* -20 dB, avoids acoustic feedback on R1 */
-#define RF_LISTEN_TIME K_SECONDS(15)
 
 /* Handles -0.x, which plain %d.%d would lose the sign of */
 static const char *db(int x10, char buf[16])
@@ -150,6 +149,7 @@ enum result test_rf_audio(void)
 	struct audio_level busy;
 	struct audio_level quiet2;
 	enum result r = PASS;
+	bool clean;
 	int delta;
 	int err;
 
@@ -198,18 +198,17 @@ enum result test_rf_audio(void)
 
 	printk("    Mic noise radio off %s dBFS, radio on %s dBFS\n", db(quiet.rms_dbfs_x10, b1),
 	       db(busy.rms_dbfs_x10, b2));
-	printk("    LISTEN %d s: mic -> speaker/headphones while the radio transmits at\n"
-	       "    20 dBm. Talk, then stay silent and listen for buzz/hum.\n"
-	       "    (Use headphones on R1 if it howls.) Press any button to stop early.\n",
-	       (int)(k_ticks_to_ms_floor32(RF_LISTEN_TIME.ticks) / 1000U));
+	printk("    LISTEN: mic -> speaker/headphones while the radio transmits at 20 dBm.\n"
+	       "    Talk, then stay silent and listen for buzz/hum. (Headphones on R1 if it howls.)\n");
 	hw_audio_mode(AUDIO_LOOPBACK);
 	key_flush();
-	(void)key_wait(-1, RF_LISTEN_TIME);
+	clean = ask_yn("Your voice comes through and there is no buzz/hum?");
 
 	hw_audio_stop();
 	(void)radio_advertise();
 
-	note("mic noise %s%s dB with radio busy (%s -> %s dBFS); listened", delta >= 0 ? "+" : "",
-	     db(delta, b3), db(quiet.rms_dbfs_x10, b1), db(busy.rms_dbfs_x10, b2));
-	return r;
+	note("mic noise %s%s dB with radio busy (%s -> %s dBFS); %s", delta >= 0 ? "+" : "",
+	     db(delta, b3), db(quiet.rms_dbfs_x10, b1), db(busy.rms_dbfs_x10, b2),
+	     clean ? "sounds clean" : "NOT clean");
+	return clean ? r : FAIL;
 }

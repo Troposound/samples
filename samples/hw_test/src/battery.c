@@ -26,7 +26,6 @@
 #define MAX17048_REG_HIBRT 0x0A
 #define MAX17048_REG_CRATE 0x16
 
-#define USB_WAIT_TIME    K_SECONDS(10)
 #define CHARGE_SETTLE_MS 3000 /* charger soft start plus gauge samples */
 #define CHARGE_RISE_MV   15   /* charge current x cell resistance, minimum */
 /* Below the BQ24075 recharge threshold (4.2 V - ~100 mV) */
@@ -134,11 +133,11 @@ static void batt_print(const char *tag, const struct batt *b)
 	       abs(b->crate_x10) / 10, abs(b->crate_x10) % 10);
 }
 
+/* False when the operator pressed n instead */
 static bool usb_wait_change(bool from)
 {
-	k_timepoint_t end = sys_timepoint_calc(USB_WAIT_TIME);
-
-	while (!sys_timepoint_expired(end)) {
+	key_flush();
+	while (!said_no()) {
 		if (vbus_present() != from) {
 			return true;
 		}
@@ -164,7 +163,7 @@ enum result test_charging(void)
 	while (n < ARRAY_SIZE(s)) {
 		bool from = s[n - 1].vbus;
 
-		printk("    %s the USB cable (board keeps running on battery) ...\n",
+		printk("    %s the USB cable (board keeps running on battery; n to skip) ...\n",
 		       from ? "Unplug" : "Plug in");
 		if (!usb_wait_change(from)) {
 			break;

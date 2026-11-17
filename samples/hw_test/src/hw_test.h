@@ -32,6 +32,11 @@ void note(const char *fmt, ...);
 int key_wait(int code, k_timeout_t timeout);
 void key_flush(void);
 
+/* Console y/n: 1 yes, 0 no, -EAGAIN on timeout */
+int yn_wait(k_timeout_t timeout);
+bool ask_yn(const char *question);
+bool said_no(void);
+
 /* Set during 'hw run'; power-off tests only run when named */
 extern bool hw_running_all;
 
